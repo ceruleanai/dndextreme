@@ -26,4 +26,6 @@ return [
 
     ],
 
+    'live_model' => env('GEMINI_LIVE_MODEL', 'gemini-2.5-flash-native-audio-latest'),
+
 ];

@@ -183,7 +183,7 @@ PROMPT;
         return implode("\n\n", $parts);
     }
 
-    private function getRecentMessages(GameSession $session): array
+    public function getRecentMessages(GameSession $session): array
     {
         return $session->messages()
             ->orderBy('created_at', 'desc')

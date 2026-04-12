@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../api/client';
 import { Campaign, Message, GameSession } from '../api/types';
+import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useTTS } from '../hooks/useTTS';
+import VoiceMode from '../components/VoiceMode';
+import AmbientMusic from '../components/AmbientMusic';
 
 export default function GamePlayPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,7 +19,16 @@ export default function GamePlayPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [sessionStatus, setSessionStatus] = useState<string>('active');
+  const [autoSpeak, setAutoSpeak] = useState(true);
+  const [voiceModeActive, setVoiceModeActive] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { speaking, speak, stop: stopSpeaking } = useTTS();
+
+  const onVoiceResult = useCallback((text: string) => {
+    setInput(prev => prev + (prev ? ' ' : '') + text);
+  }, []);
+  const { listening, toggle: toggleVoice, isSupported: voiceSupported } = useVoiceInput(onVoiceResult);
 
   useEffect(() => {
     if (!id || !sessionId) return;
@@ -27,15 +40,26 @@ export default function GamePlayPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Auto-speak new DM messages
+  useEffect(() => {
+    if (!autoSpeak || messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === 'assistant' && !sending) {
+      speak(lastMsg.content);
+    }
+  }, [messages, autoSpeak, sending, speak]);
+
   const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || sending) return;
+
+    // Stop any ongoing speech when player sends a message
+    stopSpeaking();
 
     const playerMsg = input.trim();
     setInput('');
     setSending(true);
 
-    // Optimistically add the player message
     const tempPlayerMsg: Message = {
       id: Date.now(),
       role: 'user',
@@ -50,7 +74,6 @@ export default function GamePlayPage() {
       const dmResponse = await api.post<Message>(`/campaigns/${id}/sessions/${sessionId}/message`, {
         message: playerMsg,
       });
-      // Replace optimistic message and add DM response
       setMessages(prev => {
         const withoutTemp = prev.filter(m => m.id !== tempPlayerMsg.id);
         return [...withoutTemp, { ...tempPlayerMsg, id: dmResponse.id - 1 }, dmResponse];
@@ -64,11 +87,11 @@ export default function GamePlayPage() {
 
   const endSession = async () => {
     if (!confirm('End this session? The DM will generate a summary.')) return;
+    stopSpeaking();
     setSending(true);
     try {
-      const session = await api.post<GameSession>(`/campaigns/${id}/sessions/${sessionId}/end`);
+      await api.post<GameSession>(`/campaigns/${id}/sessions/${sessionId}/end`);
       setSessionStatus('ended');
-      // Reload messages to get the closing narration
       const msgs = await api.get<Message[]>(`/campaigns/${id}/sessions/${sessionId}/messages`);
       setMessages(msgs);
     } catch (err: unknown) {
@@ -116,6 +139,36 @@ export default function GamePlayPage() {
           </div>
         </div>
 
+        <div className="sidebar-section">
+          <h4>Voice</h4>
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={autoSpeak}
+              onChange={e => {
+                setAutoSpeak(e.target.checked);
+                if (!e.target.checked) stopSpeaking();
+              }}
+            />
+            Auto-narrate DM
+          </label>
+          {speaking && (
+            <button onClick={stopSpeaking} className="btn-voice btn-stop-voice">
+              Stop Narration
+            </button>
+          )}
+          {sessionStatus === 'active' && (
+            <button
+              onClick={() => { stopSpeaking(); setVoiceModeActive(true); }}
+              className="btn-voice-mode"
+            >
+              Voice Mode
+            </button>
+          )}
+        </div>
+
+        <AmbientMusic />
+
         {sessionStatus === 'active' && (
           <button onClick={endSession} className="btn-end-session" disabled={sending}>
             End Session
@@ -129,7 +182,16 @@ export default function GamePlayPage() {
           {messages.map(msg => (
             <div key={msg.id} className={`message message-${msg.role}`}>
               <div className="message-header">
-                {msg.role === 'assistant' ? 'Dungeon Master' : 'You'}
+                <span>{msg.role === 'assistant' ? 'Dungeon Master' : 'You'}</span>
+                {msg.role === 'assistant' && (
+                  <button
+                    className="btn-speak-msg"
+                    onClick={() => speaking ? stopSpeaking() : speak(msg.content)}
+                    title={speaking ? 'Stop' : 'Read aloud'}
+                  >
+                    {speaking ? '||' : '\u25B6'}
+                  </button>
+                )}
               </div>
               <div className="message-content">
                 {msg.role === 'assistant' ? (
@@ -153,11 +215,21 @@ export default function GamePlayPage() {
 
         {sessionStatus === 'active' && (
           <form onSubmit={sendMessage} className="input-area">
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={toggleVoice}
+                className={`btn-mic ${listening ? 'btn-mic-active' : ''}`}
+                title={listening ? 'Stop listening' : 'Voice input'}
+              >
+                {listening ? '\u23F9' : '\uD83C\uDF99'}
+              </button>
+            )}
             <input
               type="text"
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="What do you do?"
+              placeholder={listening ? 'Listening...' : 'What do you do?'}
               disabled={sending}
               autoFocus
             />
@@ -171,6 +243,18 @@ export default function GamePlayPage() {
           </div>
         )}
       </main>
+
+      {voiceModeActive && id && sessionId && (
+        <VoiceMode
+          campaignId={id}
+          sessionId={sessionId}
+          onClose={() => setVoiceModeActive(false)}
+          onTranscriptSaved={() => {
+            // Refresh messages to include voice transcripts
+            api.get<Message[]>(`/campaigns/${id}/sessions/${sessionId}/messages`).then(setMessages);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\GameController;
+use App\Http\Controllers\TTSController;
+use App\Http\Controllers\VoiceModeController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ping', function () {
@@ -37,4 +39,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Game Play
     Route::post('/campaigns/{campaign}/sessions/{session}/message', [GameController::class, 'sendMessage']);
     Route::get('/campaigns/{campaign}/sessions/{session}/messages', [GameController::class, 'getMessages']);
+
+    // Text-to-Speech
+    Route::post('/tts', [TTSController::class, 'synthesize']);
+
+    // Voice Mode (Gemini Live API)
+    Route::post('/campaigns/{campaign}/sessions/{session}/voice-config', [VoiceModeController::class, 'getVoiceConfig']);
+    Route::post('/campaigns/{campaign}/sessions/{session}/voice-transcript', [VoiceModeController::class, 'saveTranscript']);
 });
