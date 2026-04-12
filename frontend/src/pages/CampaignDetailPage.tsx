@@ -57,7 +57,7 @@ export default function CampaignDetailPage() {
         {hasCharacter ? (
           <div className="character-list">
             {campaign.characters!.map(c => (
-              <div key={c.id} className="character-card character-card-detail">
+              <div key={c.id} className={`character-card character-card-detail${c.portrait_path ? ' has-portrait' : ''}`}>
                 {c.portrait_path && (
                   <div className="character-card-portrait">
                     <img src={`${API_BASE}${c.portrait_path}`} alt={`${c.name} portrait`} />

@@ -1478,16 +1478,24 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 /* Campaign Detail Page Portrait */
-.character-card-portrait {
-  width: 100%;
-  aspect-ratio: 3/4;
-  max-height: 200px;
+.character-card-detail.has-portrait {
+  padding-top: 0;
   overflow: hidden;
-  border-radius: 8px 8px 0 0;
+}
+
+.character-card-portrait {
+  width: calc(100% + 2.5rem);
+  margin: 0 -1.25rem;
+  overflow: hidden;
+  position: relative;
 }
 
 .character-card-portrait img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  display: block;
+}
+
+.character-card-portrait + .character-card-header {
+  margin-top: 1rem;
 }
