@@ -4,9 +4,10 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 export function useTTS() {
   const [speaking, setSpeaking] = useState(false);
+  const [speakingId, setSpeakingId] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const speak = useCallback(async (text: string) => {
+  const speak = useCallback(async (text: string, id?: number) => {
     // Stop any current playback
     stop();
 
@@ -23,6 +24,7 @@ export function useTTS() {
     if (!cleanText) return;
 
     setSpeaking(true);
+    setSpeakingId(id ?? null);
 
     try {
       const token = localStorage.getItem('auth_token');
@@ -48,11 +50,11 @@ export function useTTS() {
       audioRef.current = audio;
 
       audio.onended = () => {
-        setSpeaking(false);
+        setSpeaking(false); setSpeakingId(null);
         URL.revokeObjectURL(url);
       };
       audio.onerror = () => {
-        setSpeaking(false);
+        setSpeaking(false); setSpeakingId(null);
         URL.revokeObjectURL(url);
         // Fall back to browser TTS on error
         browserTTS(cleanText);
@@ -67,7 +69,7 @@ export function useTTS() {
 
   const browserTTS = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) {
-      setSpeaking(false);
+      setSpeaking(false); setSpeakingId(null);
       return;
     }
 
@@ -82,8 +84,8 @@ export function useTTS() {
       voices.find(v => v.lang.startsWith('en'));
     if (preferred) utterance.voice = preferred;
 
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
+    utterance.onend = () => setSpeaking(false); setSpeakingId(null);
+    utterance.onerror = () => setSpeaking(false); setSpeakingId(null);
 
     window.speechSynthesis.speak(utterance);
     setSpeaking(true);
@@ -97,8 +99,8 @@ export function useTTS() {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    setSpeaking(false);
+    setSpeaking(false); setSpeakingId(null);
   }, []);
 
-  return { speaking, speak, stop };
+  return { speaking, speakingId, speak, stop };
 }

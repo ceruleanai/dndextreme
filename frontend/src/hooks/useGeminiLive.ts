@@ -189,9 +189,11 @@ export function useGeminiLive({ campaignId, sessionId, voice = 'Charon' }: UseGe
 
       // Get voice config (API key + context) from backend
       if (!configRef.current) {
+        console.log('[GeminiLive] Fetching voice config...');
         configRef.current = await api.post<VoiceConfigResponse>(
           `/campaigns/${campaignId}/sessions/${sessionId}/voice-config`
         );
+        console.log('[GeminiLive] Voice config received, model:', configRef.current.model);
       }
       const config = configRef.current;
 
@@ -201,6 +203,7 @@ export function useGeminiLive({ campaignId, sessionId, voice = 'Charon' }: UseGe
       wsRef.current = ws;
 
       ws.onopen = () => {
+        console.log('[GeminiLive] WebSocket opened, sending setup...');
         const setup = {
           setup: {
             model: `models/${config.model}`,
@@ -222,10 +225,16 @@ export function useGeminiLive({ campaignId, sessionId, voice = 'Charon' }: UseGe
         ws.send(JSON.stringify(setup));
       };
 
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+      ws.onmessage = async (event) => {
+        let raw = event.data;
+        // Handle Blob responses from WebSocket
+        if (raw instanceof Blob) {
+          raw = await raw.text();
+        }
+        const data = JSON.parse(raw);
 
-        if (data.setupComplete) {
+        if (data.setupComplete !== undefined) {
+          console.log('[GeminiLive] Setup complete, starting mic...');
           setStatus('active');
           startMic();
 
@@ -276,14 +285,16 @@ export function useGeminiLive({ campaignId, sessionId, voice = 'Charon' }: UseGe
         }
       };
 
-      ws.onerror = () => {
+      ws.onerror = (e) => {
+        console.error('[GeminiLive] WebSocket error:', e);
         setError('WebSocket connection failed. Check your API key and network.');
         setStatus('error');
       };
 
       ws.onclose = (event) => {
+        console.log('[GeminiLive] WebSocket closed:', event.code, event.reason);
         if (event.code !== 1000 && event.code !== 0) {
-          setError(`Connection closed (code ${event.code})`);
+          setError(`Connection closed (code ${event.code}): ${event.reason || 'Unknown reason'}`);
           setStatus('error');
         }
       };

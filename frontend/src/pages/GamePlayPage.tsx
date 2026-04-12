@@ -5,8 +5,11 @@ import { api } from '../api/client';
 import { Campaign, Message, GameSession } from '../api/types';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useTTS } from '../hooks/useTTS';
+import { useAmbientMusic, Mood } from '../hooks/useAmbientMusic';
 import VoiceMode from '../components/VoiceMode';
 import AmbientMusic from '../components/AmbientMusic';
+
+const VALID_MOODS: Mood[] = ['exploration', 'tavern', 'combat', 'dungeon', 'mystical', 'camp'];
 
 export default function GamePlayPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,11 +22,11 @@ export default function GamePlayPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [sessionStatus, setSessionStatus] = useState<string>('active');
-  const [autoSpeak, setAutoSpeak] = useState(true);
   const [voiceModeActive, setVoiceModeActive] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { speaking, speak, stop: stopSpeaking } = useTTS();
+  const { speaking, speakingId, speak, stop: stopSpeaking } = useTTS();
+  const ambient = useAmbientMusic();
 
   const onVoiceResult = useCallback((text: string) => {
     setInput(prev => prev + (prev ? ' ' : '') + text);
@@ -40,20 +43,31 @@ export default function GamePlayPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-speak new DM messages
+  // Duck ambient music when narration is playing
   useEffect(() => {
-    if (!autoSpeak || messages.length === 0) return;
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role === 'assistant' && !sending) {
-      speak(lastMsg.content);
+    if (speaking) {
+      ambient.duck();
+    } else {
+      ambient.unduck();
     }
-  }, [messages, autoSpeak, sending, speak]);
+  }, [speaking]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-switch ambient mood when DM sends a message with a mood tag
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === 'assistant' && lastMsg.metadata) {
+      const mood = lastMsg.metadata.mood as string;
+      if (mood && VALID_MOODS.includes(mood as Mood)) {
+        ambient.setMood(mood as Mood);
+      }
+    }
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendMessage = async (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || sending) return;
 
-    // Stop any ongoing speech when player sends a message
     stopSpeaking();
 
     const playerMsg = input.trim();
@@ -116,7 +130,14 @@ export default function GamePlayPage() {
 
         {character && (
           <div className="sidebar-section">
-            <h3>{character.name}</h3>
+            <h3>
+              <img
+                src={`/art/classes/${character.character_class.toLowerCase()}.svg`}
+                alt={character.character_class}
+                className="sidebar-class-icon"
+              />
+              {character.name}
+            </h3>
             <p className="char-info">{character.race} {character.character_class} Lvl {character.level}</p>
             <div className="hp-bar">
               <div className="hp-fill" style={{ width: `${(character.hp / character.max_hp) * 100}%` }} />
@@ -141,17 +162,6 @@ export default function GamePlayPage() {
 
         <div className="sidebar-section">
           <h4>Voice</h4>
-          <label className="toggle-label">
-            <input
-              type="checkbox"
-              checked={autoSpeak}
-              onChange={e => {
-                setAutoSpeak(e.target.checked);
-                if (!e.target.checked) stopSpeaking();
-              }}
-            />
-            Auto-narrate DM
-          </label>
           {speaking && (
             <button onClick={stopSpeaking} className="btn-voice btn-stop-voice">
               Stop Narration
@@ -167,7 +177,14 @@ export default function GamePlayPage() {
           )}
         </div>
 
-        <AmbientMusic />
+        <AmbientMusic
+          playing={ambient.playing}
+          mood={ambient.mood}
+          volume={ambient.volume}
+          onToggle={() => ambient.playing ? ambient.stop() : ambient.start()}
+          onMoodChange={ambient.setMood}
+          onVolumeChange={ambient.setVolume}
+        />
 
         {sessionStatus === 'active' && (
           <button onClick={endSession} className="btn-end-session" disabled={sending}>
@@ -185,11 +202,11 @@ export default function GamePlayPage() {
                 <span>{msg.role === 'assistant' ? 'Dungeon Master' : 'You'}</span>
                 {msg.role === 'assistant' && (
                   <button
-                    className="btn-speak-msg"
-                    onClick={() => speaking ? stopSpeaking() : speak(msg.content)}
-                    title={speaking ? 'Stop' : 'Read aloud'}
+                    className={`btn-speak-msg ${speakingId === msg.id ? 'btn-speak-active' : ''}`}
+                    onClick={() => speakingId === msg.id ? stopSpeaking() : speak(msg.content, msg.id)}
+                    title={speakingId === msg.id ? 'Stop' : 'Read aloud'}
                   >
-                    {speaking ? '||' : '\u25B6'}
+                    {speakingId === msg.id ? '\u23F9' : '\u25B6'}
                   </button>
                 )}
               </div>
@@ -250,7 +267,6 @@ export default function GamePlayPage() {
           sessionId={sessionId}
           onClose={() => setVoiceModeActive(false)}
           onTranscriptSaved={() => {
-            // Refresh messages to include voice transcripts
             api.get<Message[]>(`/campaigns/${id}/sessions/${sessionId}/messages`).then(setMessages);
           }}
         />

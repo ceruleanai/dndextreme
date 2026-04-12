@@ -18,17 +18,20 @@ export default function CampaignListPage() {
 
   return (
     <div className="page">
-      <header className="page-header">
-        <h1>Your Campaigns</h1>
-        <div className="header-actions">
-          <span>Welcome, {user?.name}</span>
-          <button onClick={() => navigate('/campaigns/new')} className="btn-primary">New Campaign</button>
-          <button onClick={logout} className="btn-secondary">Logout</button>
-        </div>
-      </header>
+      <div className="page-hero">
+        <header className="page-header">
+          <h1>Your Campaigns</h1>
+          <div className="header-actions">
+            <span>Welcome, {user?.name}</span>
+            <button onClick={() => navigate('/campaigns/new')} className="btn-primary">New Campaign</button>
+            <button onClick={logout} className="btn-secondary">Logout</button>
+          </div>
+        </header>
+      </div>
 
       {campaigns.length === 0 ? (
         <div className="empty-state">
+          <img src="/art/d20.svg" alt="" className="empty-state-icon" />
           <p>No campaigns yet. Create your first adventure!</p>
           <Link to="/campaigns/new" className="btn-primary">Create Campaign</Link>
         </div>
@@ -47,6 +50,12 @@ export default function CampaignListPage() {
           ))}
         </div>
       )}
+
+      <div className="credits">
+        Art: Photos by <a href="https://unsplash.com" target="_blank" rel="noopener">Unsplash</a> contributors.
+        Icons by <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (CC BY 3.0) &mdash; Lorc, Delapouite.
+        Music from <a href="https://opengameart.org" target="_blank" rel="noopener">OpenGameArt.org</a> (CC0).
+      </div>
     </div>
   );
 }

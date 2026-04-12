@@ -68,9 +68,16 @@ export default function CreateCharacterPage() {
           </label>
           <label>
             Class
-            <select value={charClass} onChange={e => setCharClass(e.target.value)}>
-              {CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="class-select-row">
+              <img
+                src={`/art/classes/${charClass.toLowerCase()}.svg`}
+                alt={charClass}
+                className="class-icon"
+              />
+              <select value={charClass} onChange={e => setCharClass(e.target.value)}>
+                {CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </label>
         </div>
 

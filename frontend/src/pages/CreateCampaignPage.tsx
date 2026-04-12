@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { Campaign } from '../api/types';
 
@@ -30,8 +30,13 @@ export default function CreateCampaignPage() {
   };
 
   return (
-    <div className="page">
-      <h1>Create New Campaign</h1>
+    <div className="page create-campaign-page">
+      <div className="page-hero page-hero-books">
+        <Link to="/campaigns" className="back-link">Back to Campaigns</Link>
+        <h1>Create New Campaign</h1>
+        <p className="page-hero-subtitle">Define your world and let the Dungeon Master bring it to life.</p>
+      </div>
+
       {error && <p className="error">{error}</p>}
       <form onSubmit={handleSubmit} className="form">
         <label>

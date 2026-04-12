@@ -2,287 +2,203 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 
 export type Mood = 'exploration' | 'tavern' | 'combat' | 'dungeon' | 'mystical' | 'camp';
 
-interface AmbientLayer {
-  name: string;
-  node: OscillatorNode | AudioBufferSourceNode;
-  gain: GainNode;
-}
-
-// Curated music tracks — royalty-free / CC-licensed
-const MUSIC_TRACKS: Record<Mood, string[]> = {
-  exploration: [
-    '/music/exploration.mp3',
-  ],
-  tavern: [
-    '/music/tavern.mp3',
-  ],
-  combat: [
-    '/music/combat.mp3',
-  ],
-  dungeon: [
-    '/music/dungeon.mp3',
-  ],
-  mystical: [
-    '/music/mystical.mp3',
-  ],
-  camp: [
-    '/music/camp.mp3',
-  ],
-};
-
-function createNoiseBuffer(ctx: AudioContext, seconds: number): AudioBuffer {
-  const sampleRate = ctx.sampleRate;
-  const length = sampleRate * seconds;
-  const buffer = ctx.createBuffer(1, length, sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < length; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
-  return buffer;
-}
-
-function buildProceduralLayers(ctx: AudioContext, mood: Mood, master: GainNode): AmbientLayer[] {
-  const layers: AmbientLayer[] = [];
-
-  const addOsc = (name: string, type: OscillatorType, freq: number, vol: number, detune = 0) => {
-    const osc = ctx.createOscillator();
-    osc.type = type;
-    osc.frequency.value = freq;
-    osc.detune.value = detune;
-    const gain = ctx.createGain();
-    gain.gain.value = vol;
-    osc.connect(gain).connect(master);
-    osc.start();
-    layers.push({ name, node: osc, gain });
-  };
-
-  const addNoise = (name: string, vol: number, lowFreq: number, highFreq: number) => {
-    const noise = ctx.createBufferSource();
-    noise.buffer = createNoiseBuffer(ctx, 4);
-    noise.loop = true;
-    const bandpass = ctx.createBiquadFilter();
-    bandpass.type = 'bandpass';
-    bandpass.frequency.value = (lowFreq + highFreq) / 2;
-    bandpass.Q.value = 0.5;
-    const gain = ctx.createGain();
-    gain.gain.value = vol;
-    noise.connect(bandpass).connect(gain).connect(master);
-    noise.start();
-    layers.push({ name, node: noise, gain });
-  };
-
-  switch (mood) {
-    case 'exploration':
-      // Gentle wind + soft drone
-      addNoise('wind', 0.06, 200, 800);
-      addOsc('drone-low', 'sine', 65, 0.04);
-      addOsc('drone-fifth', 'sine', 98, 0.025);
-      addOsc('shimmer', 'sine', 392, 0.008, 3);
-      break;
-
-    case 'tavern':
-      // Warm crackling fire + murmur
-      addNoise('fire-crackle', 0.05, 1000, 4000);
-      addNoise('murmur', 0.03, 200, 600);
-      addOsc('hearth-hum', 'sine', 80, 0.03);
-      break;
-
-    case 'combat':
-      // Tense low drone + heartbeat pulse
-      addOsc('tension-bass', 'sawtooth', 55, 0.04);
-      addOsc('tension-mid', 'square', 110, 0.015);
-      addOsc('dissonance', 'sine', 117, 0.02); // tritone tension
-      addNoise('rumble', 0.04, 30, 120);
-      break;
-
-    case 'dungeon':
-      // Dark dripping + eerie drone
-      addNoise('drip-echo', 0.03, 2000, 5000);
-      addOsc('dark-drone', 'sine', 50, 0.04);
-      addOsc('eerie', 'sine', 233, 0.012, 5); // slightly detuned for unease
-      addNoise('distant-rumble', 0.025, 40, 100);
-      break;
-
-    case 'mystical':
-      // Ethereal pads + shimmering overtones
-      addOsc('pad-root', 'sine', 130, 0.03);
-      addOsc('pad-fifth', 'sine', 196, 0.02);
-      addOsc('pad-octave', 'sine', 262, 0.015);
-      addOsc('shimmer-high', 'triangle', 523, 0.008, 7);
-      addNoise('sparkle', 0.015, 3000, 8000);
-      break;
-
-    case 'camp':
-      // Campfire + crickets + gentle wind
-      addNoise('campfire', 0.05, 800, 3000);
-      addNoise('wind-gentle', 0.03, 100, 400);
-      addOsc('cricket-1', 'sine', 4200, 0.006);
-      addOsc('cricket-2', 'sine', 4800, 0.004);
-      addOsc('night-drone', 'sine', 70, 0.02);
-      break;
-  }
-
-  return layers;
-}
+const CROSSFADE_MS = 2000;
+const DUCK_MS = 600;
+const DUCK_RATIO = 0.15; // duck to 15% of set volume
 
 export function useAmbientMusic() {
   const [playing, setPlaying] = useState(false);
   const [mood, setMoodState] = useState<Mood>('exploration');
-  const [volume, setVolumeState] = useState(0.5);
-  const [hasMusicTrack, setHasMusicTrack] = useState(false);
+  const [volume, setVolumeState] = useState(0.4);
 
-  const ctxRef = useRef<AudioContext | null>(null);
-  const masterGainRef = useRef<GainNode | null>(null);
-  const layersRef = useRef<AmbientLayer[]>([]);
-  const musicElRef = useRef<HTMLAudioElement | null>(null);
-  const musicGainRef = useRef<GainNode | null>(null);
-  const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const [ducked, setDucked] = useState(false);
+
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const fadingOutRef = useRef<HTMLAudioElement | null>(null);
+  const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const duckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const moodRef = useRef(mood);
   const volumeRef = useRef(volume);
+  const playingRef = useRef(false);
+  const duckedRef = useRef(false);
 
   useEffect(() => { moodRef.current = mood; }, [mood]);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
 
-  const stopLayers = useCallback(() => {
-    for (const layer of layersRef.current) {
-      try {
-        layer.gain.gain.setTargetAtTime(0, ctxRef.current?.currentTime ?? 0, 0.5);
-        if (layer.node instanceof OscillatorNode) {
-          setTimeout(() => { try { layer.node.stop(); } catch {} }, 1000);
-        } else {
-          setTimeout(() => { try { (layer.node as AudioBufferSourceNode).stop(); } catch {} }, 1000);
-        }
-      } catch {}
-    }
-    layersRef.current = [];
+  const fadeOut = useCallback((audio: HTMLAudioElement, onDone?: () => void) => {
+    const startVol = audio.volume;
+    const steps = 40;
+    const stepMs = CROSSFADE_MS / steps;
+    let step = 0;
+
+    const interval = setInterval(() => {
+      step++;
+      audio.volume = Math.max(0, startVol * (1 - step / steps));
+      if (step >= steps) {
+        clearInterval(interval);
+        audio.pause();
+        audio.src = '';
+        onDone?.();
+      }
+    }, stepMs);
+
+    return interval;
   }, []);
 
-  const stopMusic = useCallback(() => {
-    if (musicElRef.current) {
-      musicElRef.current.pause();
-      musicElRef.current.src = '';
-      musicElRef.current = null;
-    }
-    if (musicSourceRef.current) {
-      try { musicSourceRef.current.disconnect(); } catch {}
-      musicSourceRef.current = null;
-    }
-    setHasMusicTrack(false);
-  }, []);
-
-  const startLayers = useCallback((ctx: AudioContext, currentMood: Mood, master: GainNode) => {
-    stopLayers();
-    layersRef.current = buildProceduralLayers(ctx, currentMood, master);
-  }, [stopLayers]);
-
-  const tryLoadMusic = useCallback((ctx: AudioContext, currentMood: Mood, master: GainNode) => {
-    stopMusic();
-    const tracks = MUSIC_TRACKS[currentMood];
-    if (!tracks || tracks.length === 0) return;
-
-    const track = tracks[Math.floor(Math.random() * tracks.length)];
-    const audio = new Audio(track);
+  const playTrack = useCallback((trackMood: Mood, vol: number) => {
+    const audio = new Audio(`/music/${trackMood}.mp3`);
     audio.loop = true;
-    audio.crossOrigin = 'anonymous';
-
-    // Route through Web Audio for volume control
-    const musicGain = ctx.createGain();
-    musicGain.gain.value = 0.7; // music slightly louder than procedural
-    musicGainRef.current = musicGain;
+    audio.volume = 0;
 
     audio.addEventListener('canplaythrough', () => {
-      try {
-        if (!musicSourceRef.current) {
-          const source = ctx.createMediaElementSource(audio);
-          musicSourceRef.current = source;
-          source.connect(musicGain).connect(master);
+      if (!playingRef.current) return;
+      audio.play().catch(() => {});
+
+      // Fade in
+      const steps = 40;
+      const stepMs = CROSSFADE_MS / steps;
+      const targetVol = vol;
+      let step = 0;
+
+      const interval = setInterval(() => {
+        step++;
+        audio.volume = Math.min(targetVol, targetVol * (step / steps));
+        if (step >= steps) {
+          clearInterval(interval);
         }
-        audio.play().catch(() => {});
-        setHasMusicTrack(true);
-      } catch {}
+      }, stepMs);
     }, { once: true });
 
     audio.addEventListener('error', () => {
-      // No music file available — procedural only
-      setHasMusicTrack(false);
+      console.warn(`[Ambient] No track found for mood: ${trackMood}`);
     }, { once: true });
 
-    musicElRef.current = audio;
-  }, [stopMusic]);
+    currentAudioRef.current = audio;
+  }, []);
+
+  const switchTrack = useCallback((newMood: Mood) => {
+    // Clear any ongoing fade
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
+
+    // Fade out old track
+    if (fadingOutRef.current) {
+      fadingOutRef.current.pause();
+      fadingOutRef.current.src = '';
+    }
+
+    if (currentAudioRef.current) {
+      const old = currentAudioRef.current;
+      fadingOutRef.current = old;
+      currentAudioRef.current = null;
+      fadeIntervalRef.current = fadeOut(old, () => {
+        fadingOutRef.current = null;
+        fadeIntervalRef.current = null;
+      });
+    }
+
+    // Start new track with fade in
+    playTrack(newMood, volumeRef.current);
+  }, [fadeOut, playTrack]);
 
   const start = useCallback((initialMood?: Mood) => {
     const m = initialMood ?? moodRef.current;
     setMoodState(m);
-
-    if (!ctxRef.current) {
-      ctxRef.current = new AudioContext();
-    }
-    const ctx = ctxRef.current;
-    if (ctx.state === 'suspended') ctx.resume();
-
-    if (!masterGainRef.current) {
-      masterGainRef.current = ctx.createGain();
-      masterGainRef.current.connect(ctx.destination);
-    }
-    masterGainRef.current.gain.value = volumeRef.current;
-
-    startLayers(ctx, m, masterGainRef.current);
-    tryLoadMusic(ctx, m, masterGainRef.current);
     setPlaying(true);
-  }, [startLayers, tryLoadMusic]);
+    playTrack(m, volumeRef.current);
+  }, [playTrack]);
 
   const stop = useCallback(() => {
-    stopLayers();
-    stopMusic();
-    if (ctxRef.current) {
-      ctxRef.current.close().catch(() => {});
-      ctxRef.current = null;
-      masterGainRef.current = null;
-    }
     setPlaying(false);
-  }, [stopLayers, stopMusic]);
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.src = '';
+      currentAudioRef.current = null;
+    }
+    if (fadingOutRef.current) {
+      fadingOutRef.current.pause();
+      fadingOutRef.current.src = '';
+      fadingOutRef.current = null;
+    }
+  }, []);
 
   const setMood = useCallback((newMood: Mood) => {
+    if (newMood === moodRef.current) return;
     setMoodState(newMood);
-    if (playing && ctxRef.current && masterGainRef.current) {
-      startLayers(ctxRef.current, newMood, masterGainRef.current);
-      tryLoadMusic(ctxRef.current, newMood, masterGainRef.current);
+    if (playingRef.current) {
+      switchTrack(newMood);
     }
-  }, [playing, startLayers, tryLoadMusic]);
+  }, [switchTrack]);
 
   const setVolume = useCallback((v: number) => {
     const clamped = Math.max(0, Math.min(1, v));
     setVolumeState(clamped);
-    if (masterGainRef.current) {
-      masterGainRef.current.gain.setTargetAtTime(clamped, ctxRef.current?.currentTime ?? 0, 0.1);
+    if (currentAudioRef.current) {
+      currentAudioRef.current.volume = duckedRef.current ? clamped * DUCK_RATIO : clamped;
     }
   }, []);
+
+  const smoothVolume = useCallback((target: number, durationMs: number) => {
+    if (duckIntervalRef.current) {
+      clearInterval(duckIntervalRef.current);
+    }
+    const audio = currentAudioRef.current;
+    if (!audio) return;
+    const startVol = audio.volume;
+    const steps = 30;
+    const stepMs = durationMs / steps;
+    let step = 0;
+    duckIntervalRef.current = setInterval(() => {
+      step++;
+      audio.volume = startVol + (target - startVol) * (step / steps);
+      if (step >= steps) {
+        clearInterval(duckIntervalRef.current!);
+        duckIntervalRef.current = null;
+        audio.volume = target;
+      }
+    }, stepMs);
+  }, []);
+
+  const duck = useCallback(() => {
+    if (duckedRef.current) return;
+    duckedRef.current = true;
+    setDucked(true);
+    smoothVolume(volumeRef.current * DUCK_RATIO, DUCK_MS);
+  }, [smoothVolume]);
+
+  const unduck = useCallback(() => {
+    if (!duckedRef.current) return;
+    duckedRef.current = false;
+    setDucked(false);
+    smoothVolume(volumeRef.current, DUCK_MS);
+  }, [smoothVolume]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      layersRef.current.forEach(l => {
-        try {
-          if (l.node instanceof OscillatorNode) l.node.stop();
-          else (l.node as AudioBufferSourceNode).stop();
-        } catch {}
-      });
-      if (musicElRef.current) {
-        musicElRef.current.pause();
-        musicElRef.current.src = '';
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.src = '';
       }
-      if (ctxRef.current) ctxRef.current.close().catch(() => {});
+      if (fadingOutRef.current) {
+        fadingOutRef.current.pause();
+        fadingOutRef.current.src = '';
+      }
+      if (fadeIntervalRef.current) {
+        clearInterval(fadeIntervalRef.current);
+      }
+      if (duckIntervalRef.current) {
+        clearInterval(duckIntervalRef.current);
+      }
     };
   }, []);
 
-  return {
-    playing,
-    mood,
-    volume,
-    hasMusicTrack,
-    start,
-    stop,
-    setMood,
-    setVolume,
-  };
+  return { playing, mood, volume, ducked, start, stop, setMood, setVolume, duck, unduck };
 }

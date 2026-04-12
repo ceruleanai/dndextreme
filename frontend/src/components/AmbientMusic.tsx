@@ -1,4 +1,4 @@
-import { useAmbientMusic, Mood } from '../hooks/useAmbientMusic';
+import { Mood } from '../hooks/useAmbientMusic';
 
 const MOODS: { value: Mood; label: string; icon: string }[] = [
   { value: 'exploration', label: 'Exploration', icon: '\uD83C\uDF0D' },
@@ -9,15 +9,22 @@ const MOODS: { value: Mood; label: string; icon: string }[] = [
   { value: 'camp', label: 'Camp', icon: '\uD83C\uDF43' },
 ];
 
-export default function AmbientMusic() {
-  const { playing, mood, volume, start, stop, setMood, setVolume } = useAmbientMusic();
+interface AmbientMusicProps {
+  playing: boolean;
+  mood: Mood;
+  volume: number;
+  onToggle: () => void;
+  onMoodChange: (mood: Mood) => void;
+  onVolumeChange: (vol: number) => void;
+}
 
+export default function AmbientMusic({ playing, mood, volume, onToggle, onMoodChange, onVolumeChange }: AmbientMusicProps) {
   return (
     <div className="ambient-music">
       <div className="ambient-header">
         <h4>Ambience</h4>
         <button
-          onClick={() => playing ? stop() : start()}
+          onClick={onToggle}
           className={`ambient-toggle ${playing ? 'ambient-on' : ''}`}
         >
           {playing ? 'ON' : 'OFF'}
@@ -30,7 +37,7 @@ export default function AmbientMusic() {
             {MOODS.map(m => (
               <button
                 key={m.value}
-                onClick={() => setMood(m.value)}
+                onClick={() => onMoodChange(m.value)}
                 className={`mood-btn ${mood === m.value ? 'mood-active' : ''}`}
                 title={m.label}
               >
@@ -47,7 +54,7 @@ export default function AmbientMusic() {
               max="1"
               step="0.05"
               value={volume}
-              onChange={e => setVolume(parseFloat(e.target.value))}
+              onChange={e => onVolumeChange(parseFloat(e.target.value))}
               className="vol-slider"
             />
           </div>

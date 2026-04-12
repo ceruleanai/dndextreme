@@ -28,6 +28,7 @@ export default function RegisterPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        <img src="/art/d20.svg" alt="" className="auth-logo" />
         <h1>DnD Extreme</h1>
         <h2>Register</h2>
         {error && <p className="error">{error}</p>}

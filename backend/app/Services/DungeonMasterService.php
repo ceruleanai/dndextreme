@@ -30,6 +30,7 @@ RESPONSE FORMAT:
 - Use markdown for emphasis. Use **bold** for NPC dialogue, *italics* for descriptive atmosphere.
 - When calling for a roll, use the format: 🎲 [ROLL: Ability/Skill Check, DC N]
 - End narration segments with a clear prompt for player action.
+- On the very last line of every response, include a mood tag that reflects the current scene atmosphere. Use exactly this format: [MOOD:exploration], [MOOD:tavern], [MOOD:combat], [MOOD:dungeon], [MOOD:mystical], or [MOOD:camp]. Choose the one that best fits the scene: exploration for travel/outdoors, tavern for social/indoor warmth, combat for battle/tension, dungeon for dark/underground/danger, mystical for magic/wonder, camp for rest/calm.
 PROMPT;
 
     public function __construct(private AIManager $aiManager) {}
@@ -64,10 +65,14 @@ PROMPT;
         );
 
         // Save the opening narration (but not the instruction)
+        $mood = $this->extractMood($response);
+        $cleanContent = $this->stripMoodTag($response);
+
         $session->messages()->create([
             'role' => 'assistant',
             'type' => 'narrative',
-            'content' => $response,
+            'content' => $cleanContent,
+            'metadata' => $mood ? ['mood' => $mood] : null,
         ]);
 
         return $session->load('messages');
@@ -91,11 +96,16 @@ PROMPT;
         // Get AI response
         $response = $this->callAI($campaign, $systemPrompt, $recentMessages);
 
+        // Parse mood tag from response
+        $mood = $this->extractMood($response);
+        $cleanContent = $this->stripMoodTag($response);
+
         // Save and return the DM response
         return $session->messages()->create([
             'role' => 'assistant',
             'type' => 'narrative',
-            'content' => $response,
+            'content' => $cleanContent,
+            'metadata' => $mood ? ['mood' => $mood] : null,
         ]);
     }
 
@@ -196,6 +206,21 @@ PROMPT;
             ])
             ->values()
             ->toArray();
+    }
+
+    private function extractMood(string $text): ?string
+    {
+        $validMoods = ['exploration', 'tavern', 'combat', 'dungeon', 'mystical', 'camp'];
+        if (preg_match('/\[MOOD:(\w+)\]/i', $text, $matches)) {
+            $mood = strtolower($matches[1]);
+            return in_array($mood, $validMoods) ? $mood : null;
+        }
+        return null;
+    }
+
+    private function stripMoodTag(string $text): string
+    {
+        return trim(preg_replace('/\s*\[MOOD:\w+\]\s*$/i', '', $text));
     }
 
     private function callAI(Campaign $campaign, string $systemPrompt, array $messages): string
