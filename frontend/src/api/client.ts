@@ -13,8 +13,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     },
   });
 
+  if (res.status === 401) {
+    localStorage.removeItem('auth_token');
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
+
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `API error: ${res.status}`);
   }
 
   return res.json();
@@ -23,8 +30,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint),
 
-  post: <T>(endpoint: string, data: unknown) =>
-    request<T>(endpoint, { method: 'POST', body: JSON.stringify(data) }),
+  post: <T>(endpoint: string, data?: unknown) =>
+    request<T>(endpoint, { method: 'POST', body: data ? JSON.stringify(data) : undefined }),
 
   put: <T>(endpoint: string, data: unknown) =>
     request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data) }),

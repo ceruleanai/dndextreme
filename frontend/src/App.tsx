@@ -1,40 +1,45 @@
-import { useEffect, useState } from 'react'
-import { api } from './api/client'
-import './App.css'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import CampaignListPage from './pages/CampaignListPage';
+import CreateCampaignPage from './pages/CreateCampaignPage';
+import CampaignDetailPage from './pages/CampaignDetailPage';
+import CreateCharacterPage from './pages/CreateCharacterPage';
+import GamePlayPage from './pages/GamePlayPage';
+import './App.css';
 
-interface PingResponse {
-  status: string
-  app: string
-  ai_provider: string
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="page"><p>Loading...</p></div>;
+  if (!user) return <Navigate to="/login" />;
+  return <>{children}</>;
 }
 
-function App() {
-  const [apiStatus, setApiStatus] = useState<PingResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.get<PingResponse>('/ping')
-      .then(setApiStatus)
-      .catch((err) => setError(err.message))
-  }, [])
+function AppRoutes() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="page"><p>Loading...</p></div>;
 
   return (
-    <div className="app">
-      <h1>DnD Extreme</h1>
-      <p>AI-Driven Dungeon Master</p>
-
-      <div className="status-card">
-        {error && <p className="error">API: {error}</p>}
-        {apiStatus && (
-          <>
-            <p>API: {apiStatus.status}</p>
-            <p>AI Provider: {apiStatus.ai_provider}</p>
-          </>
-        )}
-        {!apiStatus && !error && <p>Connecting to API...</p>}
-      </div>
-    </div>
-  )
+    <Routes>
+      <Route path="/login" element={user ? <Navigate to="/campaigns" /> : <LoginPage />} />
+      <Route path="/register" element={user ? <Navigate to="/campaigns" /> : <RegisterPage />} />
+      <Route path="/campaigns" element={<ProtectedRoute><CampaignListPage /></ProtectedRoute>} />
+      <Route path="/campaigns/new" element={<ProtectedRoute><CreateCampaignPage /></ProtectedRoute>} />
+      <Route path="/campaigns/:id" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
+      <Route path="/campaigns/:id/character/new" element={<ProtectedRoute><CreateCharacterPage /></ProtectedRoute>} />
+      <Route path="/campaigns/:id/play" element={<ProtectedRoute><GamePlayPage /></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to={user ? '/campaigns' : '/login'} />} />
+    </Routes>
+  );
 }
 
-export default App
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
