@@ -45,6 +45,7 @@ When narrative events trigger mechanical changes, include tags on their own line
 - [CONDITION_REMOVE:name:target] — Remove a condition
 - [HEAL:N] — Heal N hit points
 - [DAMAGE:N:type] — Deal N damage of type (e.g., [DAMAGE:8:fire])
+- [LOCATION:category:name] — When the party moves to a new distinct location. Categories: tavern, forest, dungeon, cave, town, castle, road, camp, temple, ruins, mountain, swamp, dock, sewer, ship. Use a specific location name. Example: [LOCATION:tavern:The Golden Goose Inn]
 Only use these tags when the narrative warrants a mechanical change. Do not use them for hypothetical or conditional events.
 PROMPT;
 
@@ -52,6 +53,7 @@ PROMPT;
         private AIManager $aiManager,
         private ?CharacterProgressionService $progressionService = null,
         private ?CombatService $combatService = null,
+        private ?MapService $mapService = null,
     ) {}
 
     public function setProgressionService(CharacterProgressionService $service): void
@@ -141,6 +143,22 @@ PROMPT;
         $metadata = [];
         if ($mood) $metadata['mood'] = $mood;
         if (!empty($actions)) $metadata['actions'] = $actions;
+
+        // Include current map in metadata if it changed
+        $locationAction = collect($actions)->firstWhere('type', 'location_change');
+        if ($locationAction) {
+            $campaign->load('gameState.currentMap');
+            $currentMap = $campaign->gameState?->currentMap;
+            if ($currentMap) {
+                $metadata['map'] = [
+                    'id' => $currentMap->id,
+                    'image_path' => $currentMap->image_path,
+                    'location_name' => $currentMap->location_name,
+                    'category' => $currentMap->category,
+                    'map_type' => $currentMap->map_type,
+                ];
+            }
+        }
 
         return $session->messages()->create([
             'role' => 'assistant',
@@ -351,6 +369,9 @@ PROMPT;
         if (preg_match('/\[DAMAGE:(\d+):([\w]+)\]/', $text, $m)) {
             $actions[] = ['type' => 'damage', 'amount' => (int) $m[1], 'damage_type' => $m[2]];
         }
+        if (preg_match('/\[LOCATION:([\w]+):([^\]]+)\]/', $text, $m)) {
+            $actions[] = ['type' => 'location_change', 'category' => $m[1], 'name' => trim($m[2])];
+        }
 
         return $actions;
     }
@@ -366,6 +387,7 @@ PROMPT;
             '/\s*\[CONDITION_REMOVE:[\w]+:[\w]+\]/',
             '/\s*\[HEAL:\d+\]/',
             '/\s*\[DAMAGE:\d+:[\w]+\]/',
+            '/\s*\[LOCATION:[\w]+:[^\]]+\]/',
         ];
 
         return trim(preg_replace($patterns, '', $text));
@@ -387,6 +409,7 @@ PROMPT;
                     'condition_add' => $this->combatService?->applyCondition($character, $action['condition']),
                     'condition_remove' => $this->combatService?->removeCondition($character, $action['condition']),
                     'combat_end' => $this->combatService?->getActiveCombat($session)?->update(['status' => 'ended']),
+                    'location_change' => $this->applyLocationChange($campaign, $action['category'], $action['name']),
                     default => null,
                 };
             } catch (\Throwable $e) {
@@ -413,6 +436,23 @@ PROMPT;
     {
         $character->hp = min($character->max_hp, $character->hp + $amount);
         $character->save();
+    }
+
+    private function applyLocationChange(Campaign $campaign, string $category, string $name): void
+    {
+        if (!$this->mapService) return;
+
+        $map = $this->mapService->assignMapForLocation($campaign, $category, $name);
+        if ($map) {
+            $this->mapService->setActiveMap($campaign, $map);
+
+            // Update game state location
+            $state = $campaign->gameState;
+            if ($state) {
+                $state->current_location = $name;
+                $state->save();
+            }
+        }
     }
 
     private function extractMood(string $text): ?string

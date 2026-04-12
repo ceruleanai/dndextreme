@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
+import React, { useState, useEffect, useRef, useCallback, FormEvent, Suspense, lazy } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../api/client';
-import { Campaign, Character, Message, GameSession } from '../api/types';
+import { Campaign, Character, Message, GameSession, MapMetadata, CampaignMap, CombatEncounter } from '../api/types';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useTTS } from '../hooks/useTTS';
 import { useAmbientMusic, Mood } from '../hooks/useAmbientMusic';
@@ -11,6 +11,7 @@ import AmbientMusic from '../components/AmbientMusic';
 import CharacterPanel from '../components/CharacterPanel';
 import SpellPanel from '../components/SpellPanel';
 import CombatTracker from '../components/CombatTracker';
+const MapPanel = lazy(() => import('../components/MapPanel'));
 
 const VALID_MOODS: Mood[] = ['exploration', 'tavern', 'combat', 'dungeon', 'mystical', 'camp'];
 
@@ -26,6 +27,8 @@ export default function GamePlayPage() {
   const [sending, setSending] = useState(false);
   const [sessionStatus, setSessionStatus] = useState<string>('active');
   const [voiceModeActive, setVoiceModeActive] = useState(false);
+  const [currentMap, setCurrentMap] = useState<MapMetadata | null>(null);
+  const [combatData, setCombatData] = useState<CombatEncounter | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { speaking, speakingId, speak, stop: stopSpeaking } = useTTS();
@@ -40,6 +43,17 @@ export default function GamePlayPage() {
     if (!id || !sessionId) return;
     api.get<Campaign>(`/campaigns/${id}`).then(setCampaign);
     api.get<Message[]>(`/campaigns/${id}/sessions/${sessionId}/messages`).then(setMessages);
+    // Load current map
+    api.get<CampaignMap | null>(`/campaigns/${id}/maps/current`).then(map => {
+      if (map) setCurrentMap({
+        id: map.id, image_path: map.image_path,
+        location_name: map.location_name, category: map.category, map_type: map.map_type,
+      });
+    }).catch(() => {});
+    // Load combat state
+    api.get<CombatEncounter>(`/campaigns/${id}/sessions/${sessionId}/combat`)
+      .then(setCombatData)
+      .catch(() => setCombatData(null));
   }, [id, sessionId]);
 
   useEffect(() => {
@@ -55,7 +69,7 @@ export default function GamePlayPage() {
     }
   }, [speaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-switch ambient mood when DM sends a message with a mood tag
+  // Auto-switch ambient mood and map when DM sends a message
   useEffect(() => {
     if (messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
@@ -63,6 +77,11 @@ export default function GamePlayPage() {
       const mood = lastMsg.metadata.mood as string;
       if (mood && VALID_MOODS.includes(mood as Mood)) {
         ambient.setMood(mood as Mood);
+      }
+      // Update map if the DM changed location
+      const map = lastMsg.metadata.map as MapMetadata | undefined;
+      if (map) {
+        setCurrentMap(map);
       }
     }
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -205,6 +224,17 @@ export default function GamePlayPage() {
 
       {/* Main Chat Area */}
       <main className="game-main">
+        {(currentMap || combatData?.status === 'active') && (
+          <Suspense fallback={<div className="map-placeholder"><p>Loading map...</p></div>}>
+            <MapPanel
+              campaignId={id!}
+              mapData={currentMap}
+              combatants={combatData?.initiative_order}
+              combatActive={combatData?.status === 'active'}
+              currentTurn={combatData?.current_turn}
+            />
+          </Suspense>
+        )}
         <div className="messages-area">
           {messages.map(msg => (
             <div key={msg.id} className={`message message-${msg.role}`}>

@@ -9,7 +9,7 @@ class CombatEncounter extends Model
 {
     protected $fillable = [
         'game_session_id', 'status', 'round', 'current_turn',
-        'initiative_order', 'combat_log',
+        'initiative_order', 'combat_log', 'map_id',
     ];
 
     protected function casts(): array

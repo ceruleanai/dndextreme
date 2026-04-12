@@ -1213,3 +1213,68 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .log-entry { font-size: 0.7rem; margin-bottom: 0.15rem; }
 .log-hit { color: #4ade80; }
 .log-miss { color: var(--text-secondary); }
+
+/* ==================== Map Panel ==================== */
+.map-panel {
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 20, 35, 0.9);
+  transition: all 0.3s ease;
+}
+.map-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  border: none;
+}
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background: rgba(30, 42, 74, 0.6);
+  user-select: none;
+}
+.map-location-name {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+.map-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.map-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: color 0.2s;
+}
+.map-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+.map-toggle { font-size: 0.7rem; color: var(--text-secondary); }
+.map-canvas-container {
+  width: 100%;
+  height: 300px;
+  overflow: hidden;
+  background: #0a0e1a;
+  position: relative;
+}
+.map-fullscreen .map-canvas-container {
+  height: calc(100vh - 40px);
+}
+.map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}

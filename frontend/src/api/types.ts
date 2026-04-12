@@ -111,6 +111,25 @@ export interface Spell {
   healing?: string;
 }
 
+export interface CampaignMap {
+  id: number;
+  campaign_id: number;
+  map_type: 'world' | 'region' | 'location' | 'battle';
+  category: string | null;
+  location_name: string | null;
+  image_source: 'bundled' | 'uploaded' | 'generated';
+  image_path: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface MapMetadata {
+  id: number;
+  image_path: string;
+  location_name: string | null;
+  category: string | null;
+  map_type: string;
+}
+
 export interface CombatEncounter {
   id: number;
   game_session_id: number;

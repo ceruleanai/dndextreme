@@ -11,6 +11,7 @@ class GameState extends Model
 
     protected $fillable = [
         'campaign_id', 'current_location', 'quest_log', 'npc_tracker', 'world_facts',
+        'current_map_id',
     ];
 
     protected function casts(): array
@@ -26,5 +27,10 @@ class GameState extends Model
     public function campaign(): BelongsTo
     {
         return $this->belongsTo(Campaign::class);
+    }
+
+    public function currentMap(): BelongsTo
+    {
+        return $this->belongsTo(CampaignMap::class, 'current_map_id');
     }
 }

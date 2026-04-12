@@ -1,0 +1,12 @@
+{
+  "tavern": ["tavern_01.jpg", "tavern_02.jpg"],
+  "forest": ["forest_01.jpg", "forest_02.jpg"],
+  "dungeon": ["dungeon_01.jpg"],
+  "cave": ["cave_01.jpg", "cave_02.jpg"],
+  "town": ["town_01.jpg", "town_02.jpg"],
+  "castle": ["castle_01.jpg", "castle_02.jpg"],
+  "road": ["road_01.jpg"],
+  "camp": ["camp_01.jpg"],
+  "temple": ["temple_01.jpg"],
+  "mountain": ["mountain_01.jpg"]
+}

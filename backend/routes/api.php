@@ -7,6 +7,7 @@ use App\Http\Controllers\CharacterTemplateController;
 use App\Http\Controllers\CombatController;
 use App\Http\Controllers\DndReferenceController;
 use App\Http\Controllers\GameController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\TTSController;
 use App\Http\Controllers\VoiceModeController;
 use Illuminate\Support\Facades\Route;
@@ -68,6 +69,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/character-templates/{template}', [CharacterTemplateController::class, 'show']);
     Route::delete('/character-templates/{template}', [CharacterTemplateController::class, 'destroy']);
     Route::post('/character-templates/{template}/campaigns/{campaign}', [CharacterTemplateController::class, 'instantiate']);
+
+    // Campaign Maps
+    Route::get('/campaigns/{campaign}/maps', [MapController::class, 'index']);
+    Route::get('/campaigns/{campaign}/maps/current', [MapController::class, 'current']);
+    Route::post('/campaigns/{campaign}/maps', [MapController::class, 'upload']);
+    Route::post('/campaigns/{campaign}/maps/{map}/set-active', [MapController::class, 'setActive']);
+    Route::delete('/campaigns/{campaign}/maps/{map}', [MapController::class, 'destroy']);
+    Route::get('/maps/categories', [MapController::class, 'bundledCategories']);
 
     // Game Sessions
     Route::post('/campaigns/{campaign}/sessions', [GameController::class, 'startSession']);

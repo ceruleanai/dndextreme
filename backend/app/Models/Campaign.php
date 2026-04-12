@@ -40,4 +40,9 @@ class Campaign extends Model
     {
         return $this->hasOne(GameSession::class)->where('status', 'active')->latestOfMany();
     }
+
+    public function maps(): HasMany
+    {
+        return $this->hasMany(CampaignMap::class);
+    }
 }
