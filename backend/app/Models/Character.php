@@ -19,6 +19,7 @@ class Character extends Model
         'spell_slots', 'spell_slots_max', 'proficiencies',
         'conditions', 'equipped', 'class_features',
         'known_spells', 'prepared_spells', 'cantrips', 'template_id',
+        'portrait_path',
     ];
 
     protected function casts(): array

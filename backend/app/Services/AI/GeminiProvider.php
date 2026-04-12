@@ -81,6 +81,34 @@ class GeminiProvider implements AIProvider
         return $fullResponse;
     }
 
+    public function generateImage(string $prompt, array $options = []): ?string
+    {
+        $model = $options['model'] ?? 'gemini-2.5-flash-image';
+
+        $response = Http::timeout(60)->post(
+            "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$this->apiKey}",
+            [
+                'contents' => [
+                    ['parts' => [['text' => $prompt]]],
+                ],
+                'generationConfig' => [
+                    'responseModalities' => ['TEXT', 'IMAGE'],
+                ],
+            ]
+        );
+
+        $response->throw();
+
+        $parts = $response->json('candidates.0.content.parts', []);
+        foreach ($parts as $part) {
+            if (isset($part['inlineData'])) {
+                return $part['inlineData']['data'];
+            }
+        }
+
+        return null;
+    }
+
     private function formatMessages(array $messages): array
     {
         return array_map(fn($msg) => [

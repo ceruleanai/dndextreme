@@ -45,7 +45,7 @@ export default function GamePlayPage() {
     api.get<Message[]>(`/campaigns/${id}/sessions/${sessionId}/messages`).then(setMessages);
     // Load current map
     api.get<CampaignMap | null>(`/campaigns/${id}/maps/current`).then(map => {
-      if (map) setCurrentMap({
+      if (map && map.id && map.image_path) setCurrentMap({
         id: map.id, image_path: map.image_path,
         location_name: map.location_name, category: map.category, map_type: map.map_type,
       });

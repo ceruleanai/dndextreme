@@ -8,6 +8,7 @@ use App\Models\GameSession;
 use App\Services\CombatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class CombatController extends Controller
 {
@@ -34,14 +35,14 @@ class CombatController extends Controller
         return response()->json($encounter, 201);
     }
 
-    public function show(Request $request, Campaign $campaign, GameSession $session): JsonResponse
+    public function show(Request $request, Campaign $campaign, GameSession $session): JsonResponse|Response
     {
         abort_unless($campaign->user_id === $request->user()->id, 403);
 
         $encounter = $this->combat->getActiveCombat($session);
 
         if (!$encounter) {
-            return response()->json(['error' => 'No active combat'], 404);
+            return response()->noContent();
         }
 
         return response()->json($encounter);

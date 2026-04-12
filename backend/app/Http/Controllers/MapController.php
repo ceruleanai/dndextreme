@@ -7,6 +7,7 @@ use App\Models\CampaignMap;
 use App\Services\MapService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class MapController extends Controller
 {
@@ -24,13 +25,13 @@ class MapController extends Controller
         return response()->json($maps);
     }
 
-    public function current(Request $request, Campaign $campaign): JsonResponse
+    public function current(Request $request, Campaign $campaign): JsonResponse|Response
     {
         abort_unless($campaign->user_id === $request->user()->id, 403);
 
         $state = $campaign->gameState;
         if (!$state || !$state->current_map_id) {
-            return response()->json(null);
+            return response()->noContent();
         }
 
         return response()->json($state->currentMap);

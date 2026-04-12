@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Campaign;
 use App\Models\Character;
+use App\Services\AI\GeminiProvider;
 use App\Services\CharacterProgressionService;
 use App\Services\CombatService;
 use App\Services\RestService;
 use App\Services\SpellcastingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class CharacterController extends Controller
 {
@@ -283,6 +285,102 @@ class CharacterController extends Controller
         return response()->json([
             'equipped' => $character->equipped,
             'armor_class' => $character->armor_class,
+        ]);
+    }
+
+    public function generatePortrait(Request $request, Campaign $campaign, Character $character): JsonResponse
+    {
+        abort_unless($campaign->user_id === $request->user()->id, 403);
+
+        $validated = $request->validate([
+            'prompt' => 'nullable|string|max:500',
+            'image_base64' => 'nullable|string',
+        ]);
+
+        // If base64 image is provided (from preview), save directly
+        if (!empty($validated['image_base64'])) {
+            $base64 = $validated['image_base64'];
+        } else {
+            // Generate a new portrait
+            $base64 = $this->generatePortraitImage($character, $validated['prompt'] ?? '');
+            if (!$base64) {
+                return response()->json(['error' => 'Failed to generate portrait'], 500);
+            }
+        }
+
+        $filename = "portraits/character_{$character->id}_" . time() . ".png";
+        Storage::disk('public')->put($filename, base64_decode($base64));
+
+        // Delete old portrait if exists
+        if ($character->portrait_path) {
+            $oldFile = str_replace('/storage/', '', $character->portrait_path);
+            Storage::disk('public')->delete($oldFile);
+        }
+
+        $character->portrait_path = "/storage/{$filename}";
+        $character->save();
+
+        return response()->json([
+            'portrait_path' => $character->portrait_path,
+        ]);
+    }
+
+    private function generatePortraitImage(Character $character, string $userPrompt): ?string
+    {
+        $basePrompt = "Fantasy D&D character portrait card art. "
+            . "{$character->race} {$character->character_class}, named {$character->name}. "
+            . "Level {$character->level}. ";
+
+        if ($character->backstory) {
+            $basePrompt .= "Background: " . mb_substr($character->backstory, 0, 200) . ". ";
+        }
+
+        if ($userPrompt) {
+            $basePrompt .= "Additional details: {$userPrompt}. ";
+        }
+
+        $basePrompt .= "Style: detailed fantasy illustration, dramatic lighting, rich colors, "
+            . "character portrait framing (head and shoulders or upper body). "
+            . "Do NOT include any text, labels, or watermarks in the image.";
+
+        $gemini = new GeminiProvider();
+        return $gemini->generateImage($basePrompt);
+    }
+
+    public function previewPortrait(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'race' => 'required|string|max:50',
+            'character_class' => 'required|string|max:50',
+            'backstory' => 'nullable|string',
+            'prompt' => 'nullable|string|max:500',
+        ]);
+
+        $prompt = "Fantasy D&D character portrait card art. "
+            . "{$validated['race']} {$validated['character_class']}, named {$validated['name']}. ";
+
+        if (!empty($validated['backstory'])) {
+            $prompt .= "Background: " . mb_substr($validated['backstory'], 0, 200) . ". ";
+        }
+
+        if (!empty($validated['prompt'])) {
+            $prompt .= "Additional details: {$validated['prompt']}. ";
+        }
+
+        $prompt .= "Style: detailed fantasy illustration, dramatic lighting, rich colors, "
+            . "character portrait framing (head and shoulders or upper body). "
+            . "Do NOT include any text, labels, or watermarks in the image.";
+
+        $gemini = new GeminiProvider();
+        $base64 = $gemini->generateImage($prompt);
+
+        if (!$base64) {
+            return response()->json(['error' => 'Failed to generate portrait'], 500);
+        }
+
+        return response()->json([
+            'image_base64' => $base64,
         ]);
     }
 }

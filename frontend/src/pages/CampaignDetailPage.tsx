@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { Campaign, GameSession } from '../api/types';
 
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000';
+
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -56,12 +58,19 @@ export default function CampaignDetailPage() {
           <div className="character-list">
             {campaign.characters!.map(c => (
               <div key={c.id} className="character-card character-card-detail">
+                {c.portrait_path && (
+                  <div className="character-card-portrait">
+                    <img src={`${API_BASE}${c.portrait_path}`} alt={`${c.name} portrait`} />
+                  </div>
+                )}
                 <div className="character-card-header">
-                  <img
-                    src={`/art/classes/${c.character_class.toLowerCase()}.svg`}
-                    alt={c.character_class}
-                    className="class-icon"
-                  />
+                  {!c.portrait_path && (
+                    <img
+                      src={`/art/classes/${c.character_class.toLowerCase()}.svg`}
+                      alt={c.character_class}
+                      className="class-icon"
+                    />
+                  )}
                   <div>
                     <h3>{c.name}</h3>
                     <p className="char-subtitle">{c.race} {c.character_class}</p>

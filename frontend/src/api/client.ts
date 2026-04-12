@@ -24,6 +24,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error(body.message || `API error: ${res.status}`);
   }
 
+  if (res.status === 204) return null as T;
   return res.json();
 }
 

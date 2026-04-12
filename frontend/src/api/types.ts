@@ -48,6 +48,7 @@ export interface Character {
   inventory: string[] | null;
   backstory: string | null;
   template_id: number | null;
+  portrait_path: string | null;
   // Derived fields from getFullSheet
   ability_modifiers?: Record<string, number>;
   spell_save_dc?: number | null;

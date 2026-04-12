@@ -13,7 +13,7 @@ export default function CombatTracker({ campaignId, sessionId }: Props) {
 
   const fetchCombat = async () => {
     try {
-      const data = await api.get<CombatEncounter>(
+      const data = await api.get<CombatEncounter | null>(
         `/campaigns/${campaignId}/sessions/${sessionId}/combat`
       );
       setCombat(data);

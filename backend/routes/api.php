@@ -35,6 +35,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/campaigns/{campaign}/characters/{character}', [CharacterController::class, 'show']);
     Route::put('/campaigns/{campaign}/characters/{character}', [CharacterController::class, 'update']);
 
+    // Character Portrait
+    Route::post('/campaigns/{campaign}/characters/{character}/portrait', [CharacterController::class, 'generatePortrait']);
+    Route::post('/portrait-preview', [CharacterController::class, 'previewPortrait']);
+
     // Character Progression
     Route::post('/campaigns/{campaign}/characters/{character}/level-up', [CharacterController::class, 'levelUp']);
     Route::post('/campaigns/{campaign}/characters/{character}/add-xp', [CharacterController::class, 'addXp']);

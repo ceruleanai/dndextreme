@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Character, RestResult, LevelUpResult } from '../api/types';
 import { api } from '../api/client';
 
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000';
+
 interface Props {
   character: Character;
   campaignId: string;
@@ -11,6 +13,9 @@ interface Props {
 export default function CharacterPanel({ character, campaignId, onUpdate }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [resting, setResting] = useState(false);
+  const [showPortraitEdit, setShowPortraitEdit] = useState(false);
+  const [portraitPrompt, setPortraitPrompt] = useState('');
+  const [generatingPortrait, setGeneratingPortrait] = useState(false);
 
   const abilityMod = (score: number) => {
     const mod = Math.floor((score - 10) / 2);
@@ -57,17 +62,45 @@ export default function CharacterPanel({ character, campaignId, onUpdate }: Prop
     } catch { /* ignore */ }
   };
 
+  const regeneratePortrait = async () => {
+    setGeneratingPortrait(true);
+    try {
+      const result = await api.post<{ portrait_path: string }>(
+        `/campaigns/${campaignId}/characters/${character.id}/portrait`,
+        { prompt: portraitPrompt || null }
+      );
+      onUpdate({ ...character, portrait_path: result.portrait_path });
+      setShowPortraitEdit(false);
+      setPortraitPrompt('');
+    } catch { /* ignore */ } finally {
+      setGeneratingPortrait(false);
+    }
+  };
+
   const hpPercent = Math.max(0, Math.min(100, (character.hp / character.max_hp) * 100));
   const hpColor = hpPercent > 50 ? '#4ade80' : hpPercent > 25 ? '#facc15' : '#ef4444';
 
   return (
     <div className="char-panel">
+      {/* Portrait */}
+      {character.portrait_path && (
+        <div className="char-portrait-container" onClick={() => setShowPortraitEdit(!showPortraitEdit)}>
+          <img
+            src={`${API_BASE}${character.portrait_path}`}
+            alt={`${character.name} portrait`}
+            className="char-portrait"
+          />
+        </div>
+      )}
+
       <div className="char-panel-header" onClick={() => setShowDetails(!showDetails)}>
-        <img
-          src={`/art/classes/${character.character_class.toLowerCase()}.svg`}
-          alt={character.character_class}
-          className="sidebar-class-icon"
-        />
+        {!character.portrait_path && (
+          <img
+            src={`/art/classes/${character.character_class.toLowerCase()}.svg`}
+            alt={character.character_class}
+            className="sidebar-class-icon"
+          />
+        )}
         <div>
           <h3 className="char-panel-name">{character.name}</h3>
           <p className="char-info">
@@ -76,6 +109,25 @@ export default function CharacterPanel({ character, campaignId, onUpdate }: Prop
         </div>
         <span className="char-panel-toggle">{showDetails ? '\u25B2' : '\u25BC'}</span>
       </div>
+
+      {/* Portrait Edit */}
+      {showPortraitEdit && (
+        <div className="portrait-edit-section">
+          <input
+            type="text"
+            value={portraitPrompt}
+            onChange={e => setPortraitPrompt(e.target.value)}
+            placeholder="Describe changes... e.g. battle-worn, glowing eyes"
+          />
+          <button
+            onClick={regeneratePortrait}
+            disabled={generatingPortrait}
+            className="btn-regenerate-portrait"
+          >
+            {generatingPortrait ? 'Generating...' : 'Regenerate Portrait'}
+          </button>
+        </div>
+      )}
 
       {/* HP Bar */}
       <div className="hp-bar">
@@ -193,7 +245,34 @@ export default function CharacterPanel({ character, campaignId, onUpdate }: Prop
             {character.can_level_up && (
               <button onClick={doLevelUp} className="btn-level-up">Level Up!</button>
             )}
+            {!character.portrait_path && (
+              <button
+                onClick={() => setShowPortraitEdit(!showPortraitEdit)}
+                className="btn-generate-portrait"
+              >
+                Generate Portrait
+              </button>
+            )}
           </div>
+
+          {/* Portrait generation for characters without one */}
+          {!character.portrait_path && showPortraitEdit && (
+            <div className="portrait-edit-section">
+              <input
+                type="text"
+                value={portraitPrompt}
+                onChange={e => setPortraitPrompt(e.target.value)}
+                placeholder="Art direction... e.g. scarred face, plate armor"
+              />
+              <button
+                onClick={regeneratePortrait}
+                disabled={generatingPortrait}
+                className="btn-regenerate-portrait"
+              >
+                {generatingPortrait ? 'Generating...' : 'Generate Portrait'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
