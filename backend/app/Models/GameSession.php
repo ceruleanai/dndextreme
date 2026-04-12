@@ -13,6 +13,7 @@ class GameSession extends Model
 
     protected $fillable = [
         'campaign_id', 'session_number', 'summary', 'status',
+        'context_summary', 'summarized_up_to',
     ];
 
     public function campaign(): BelongsTo
