@@ -19,8 +19,7 @@ class TTSController extends Controller
         $text = $request->input('text');
         $voice = $request->input('voice', 'Charon');
 
-        // Use Gemini's TTS model
-        $response = Http::post(
+        $response = Http::timeout(30)->post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={$apiKey}",
             [
                 'contents' => [
@@ -44,7 +43,6 @@ class TTSController extends Controller
         );
 
         if ($response->failed()) {
-            // Fall back to indicating the client should use browser TTS
             return response(['error' => 'TTS unavailable', 'fallback' => true], 503);
         }
 
@@ -56,11 +54,50 @@ class TTSController extends Controller
             return response(['error' => 'No audio generated', 'fallback' => true], 503);
         }
 
-        $audioBytes = base64_decode($audioBase64);
+        $pcmBytes = base64_decode($audioBase64);
 
-        return response($audioBytes, 200, [
+        // Gemini returns raw PCM (audio/L16, 24kHz, 16-bit, mono).
+        // Browsers can't play raw PCM, so wrap it in a WAV header.
+        if (str_contains($mimeType, 'L16') || str_contains($mimeType, 'pcm')) {
+            $sampleRate = 24000;
+            if (preg_match('/rate=(\d+)/', $mimeType, $m)) {
+                $sampleRate = (int) $m[1];
+            }
+            $wavBytes = $this->pcmToWav($pcmBytes, $sampleRate, 16, 1);
+
+            return response($wavBytes, 200, [
+                'Content-Type' => 'audio/wav',
+                'Content-Length' => strlen($wavBytes),
+            ]);
+        }
+
+        return response($pcmBytes, 200, [
             'Content-Type' => $mimeType,
-            'Content-Length' => strlen($audioBytes),
+            'Content-Length' => strlen($pcmBytes),
         ]);
+    }
+
+    private function pcmToWav(string $pcmData, int $sampleRate, int $bitsPerSample, int $channels): string
+    {
+        $dataSize = strlen($pcmData);
+        $byteRate = $sampleRate * $channels * ($bitsPerSample / 8);
+        $blockAlign = $channels * ($bitsPerSample / 8);
+        $chunkSize = 36 + $dataSize;
+
+        $header = pack('A4', 'RIFF');
+        $header .= pack('V', $chunkSize);
+        $header .= pack('A4', 'WAVE');
+        $header .= pack('A4', 'fmt ');
+        $header .= pack('V', 16);              // Subchunk1Size (PCM = 16)
+        $header .= pack('v', 1);               // AudioFormat (PCM = 1)
+        $header .= pack('v', $channels);
+        $header .= pack('V', $sampleRate);
+        $header .= pack('V', $byteRate);
+        $header .= pack('v', $blockAlign);
+        $header .= pack('v', $bitsPerSample);
+        $header .= pack('A4', 'data');
+        $header .= pack('V', $dataSize);
+
+        return $header . $pcmData;
     }
 }

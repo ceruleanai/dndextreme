@@ -2,12 +2,15 @@ import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../api/client';
-import { Campaign, Message, GameSession } from '../api/types';
+import { Campaign, Character, Message, GameSession } from '../api/types';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useTTS } from '../hooks/useTTS';
 import { useAmbientMusic, Mood } from '../hooks/useAmbientMusic';
 import VoiceMode from '../components/VoiceMode';
 import AmbientMusic from '../components/AmbientMusic';
+import CharacterPanel from '../components/CharacterPanel';
+import SpellPanel from '../components/SpellPanel';
+import CombatTracker from '../components/CombatTracker';
 
 const VALID_MOODS: Mood[] = ['exploration', 'tavern', 'combat', 'dungeon', 'mystical', 'camp'];
 
@@ -120,7 +123,14 @@ export default function GamePlayPage() {
     setInput(prev => prev + (prev ? ' ' : '') + `[Rolled d${sides}: ${result}]`);
   };
 
-  const character = campaign?.characters?.[0];
+  const [character, setCharacter] = useState<Character | null>(null);
+
+  // Load full character sheet
+  useEffect(() => {
+    if (!campaign?.characters?.[0]) return;
+    const char = campaign.characters[0];
+    api.get<Character>(`/campaigns/${id}/characters/${char.id}`).then(setCharacter);
+  }, [campaign, id]);
 
   return (
     <div className="game-layout">
@@ -129,26 +139,26 @@ export default function GamePlayPage() {
         <button onClick={() => navigate(`/campaigns/${id}`)} className="back-link">Back</button>
 
         {character && (
-          <div className="sidebar-section">
-            <h3>
-              <img
-                src={`/art/classes/${character.character_class.toLowerCase()}.svg`}
-                alt={character.character_class}
-                className="sidebar-class-icon"
-              />
-              {character.name}
-            </h3>
-            <p className="char-info">{character.race} {character.character_class} Lvl {character.level}</p>
-            <div className="hp-bar">
-              <div className="hp-fill" style={{ width: `${(character.hp / character.max_hp) * 100}%` }} />
-              <span className="hp-text">HP: {character.hp}/{character.max_hp}</span>
-            </div>
-            <div className="sidebar-stats">
-              {character.stats && Object.entries(character.stats).map(([k, v]) => (
-                <span key={k} className="mini-stat">{k.toUpperCase()}: {v as number}</span>
-              ))}
-            </div>
-          </div>
+          <CharacterPanel
+            character={character}
+            campaignId={id!}
+            onUpdate={setCharacter}
+          />
+        )}
+
+        {character && (
+          <SpellPanel
+            character={character}
+            campaignId={id!}
+            onUpdate={setCharacter}
+          />
+        )}
+
+        {sessionId && (
+          <CombatTracker
+            campaignId={id!}
+            sessionId={sessionId}
+          />
         )}
 
         <div className="sidebar-section">

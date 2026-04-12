@@ -16,10 +16,14 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg-dark);
   color: var(--text-primary);
   min-height: 100vh;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Cinzel', Georgia, serif;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -974,3 +978,238 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   vertical-align: middle;
   margin-right: 0.4rem;
 }
+
+/* ==================== Character Panel ==================== */
+.char-panel {
+  padding: 0.75rem;
+  background: rgba(30, 42, 74, 0.5);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+.char-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+.char-panel-header h3 { margin: 0; }
+.char-panel-name { font-size: 1rem; color: var(--accent); margin: 0; }
+.char-panel-toggle {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.char-quick-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.char-quick-stats span {
+  background: rgba(15, 52, 96, 0.5);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+.char-details {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+.char-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(42, 42, 74, 0.5);
+}
+.char-detail-sub { color: var(--text-secondary); font-size: 0.75rem; }
+.char-detail-section {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.char-detail-section h4 {
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin-bottom: 0.25rem;
+}
+.char-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+.btn-rest {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: background 0.2s;
+}
+.btn-rest:hover { background: rgba(15, 52, 96, 0.8); }
+.btn-level-up {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  background: linear-gradient(135deg, #e94560, #ff6b81);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: bold;
+  animation: pulse-glow 2s infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(233, 69, 96, 0.3); }
+  50% { box-shadow: 0 0 15px rgba(233, 69, 96, 0.6); }
+}
+
+/* Spell Slots */
+.spell-slots-grid { display: flex; flex-direction: column; gap: 0.25rem; }
+.spell-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+.slot-pips { display: flex; gap: 0.2rem; }
+.slot-pip {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  display: inline-block;
+}
+.slot-filled { background: var(--accent); }
+.slot-empty { background: transparent; }
+
+/* Death Saves */
+.death-saves { text-align: center; }
+.death-pip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #666;
+  display: inline-block;
+  margin: 0 2px;
+}
+.death-success { background: #4ade80; border-color: #4ade80; }
+.death-failure { background: #ef4444; border-color: #ef4444; }
+
+/* Condition Tags */
+.condition-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.condition-tag {
+  background: rgba(233, 69, 96, 0.2);
+  color: #ff6b81;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  border: 1px solid rgba(233, 69, 96, 0.3);
+}
+
+/* ==================== Spell Panel ==================== */
+.spell-panel { max-height: 300px; overflow-y: auto; }
+.spell-slots-mini {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.slot-mini {
+  font-size: 0.7rem;
+  background: rgba(15, 52, 96, 0.5);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+.spell-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.spell-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.3rem 0.4rem;
+  background: rgba(15, 52, 96, 0.3);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.spell-item-info { display: flex; flex-direction: column; }
+.spell-name { color: var(--text-primary); }
+.spell-level { font-size: 0.65rem; color: var(--text-secondary); }
+.btn-cast {
+  padding: 0.2rem 0.6rem;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: background 0.2s;
+}
+.btn-cast:hover { background: var(--accent-hover); }
+.btn-cast:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ==================== Combat Tracker ==================== */
+.combat-tracker { border-left: 3px solid #ef4444; }
+.initiative-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.initiative-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(15, 52, 96, 0.3);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  transition: background 0.2s;
+}
+.initiative-active {
+  background: rgba(233, 69, 96, 0.15);
+  border: 1px solid rgba(233, 69, 96, 0.3);
+}
+.initiative-dead { opacity: 0.4; text-decoration: line-through; }
+.init-name {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.init-arrow { color: var(--accent); font-size: 0.65rem; }
+.init-player-badge {
+  font-size: 0.6rem;
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  padding: 0 0.3rem;
+  border-radius: 3px;
+}
+.init-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+.init-hp { min-width: 50px; }
+.init-hp-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(42, 42, 74, 0.5);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.init-hp-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.init-ac { font-size: 0.65rem; }
+.combat-current-turn {
+  margin-top: 0.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.combat-log { margin-top: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.4rem; }
+.combat-log h5 { font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.25rem; }
+.log-entry { font-size: 0.7rem; margin-bottom: 0.15rem; }
+.log-hit { color: #4ade80; }
+.log-miss { color: var(--text-secondary); }

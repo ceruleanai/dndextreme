@@ -24,4 +24,14 @@ class GameSession extends Model
     {
         return $this->hasMany(Message::class);
     }
+
+    public function combatEncounters(): HasMany
+    {
+        return $this->hasMany(CombatEncounter::class);
+    }
+
+    public function activeCombat()
+    {
+        return $this->hasOne(CombatEncounter::class)->where('status', 'active');
+    }
 }

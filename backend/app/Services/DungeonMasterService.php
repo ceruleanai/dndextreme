@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\Campaign;
+use App\Models\Character;
 use App\Models\GameSession;
 use App\Models\GameState;
 use App\Models\Message;
 use App\Services\AI\AIManager;
+use Illuminate\Support\Facades\Log;
 
 class DungeonMasterService
 {
@@ -31,9 +33,36 @@ RESPONSE FORMAT:
 - When calling for a roll, use the format: 🎲 [ROLL: Ability/Skill Check, DC N]
 - End narration segments with a clear prompt for player action.
 - On the very last line of every response, include a mood tag that reflects the current scene atmosphere. Use exactly this format: [MOOD:exploration], [MOOD:tavern], [MOOD:combat], [MOOD:dungeon], [MOOD:mystical], or [MOOD:camp]. Choose the one that best fits the scene: exploration for travel/outdoors, tavern for social/indoor warmth, combat for battle/tension, dungeon for dark/underground/danger, mystical for magic/wonder, camp for rest/calm.
+
+GAME MECHANIC TAGS:
+When narrative events trigger mechanical changes, include tags on their own line at the end of your response (before the MOOD tag). Use these formats:
+- [XP:N] — Award N experience points (e.g., after defeating enemies, completing quests)
+- [GOLD:N] — Award N gold pieces (e.g., loot, rewards)
+- [COMBAT:START] — When combat begins. Follow with combatant details.
+- [COMBAT:END] — When combat ends.
+- [ITEM:slug] — When player finds/receives an item (use equipment slugs like "longsword", "chain-mail")
+- [CONDITION:name:target] — Apply a condition (e.g., [CONDITION:poisoned:player])
+- [CONDITION_REMOVE:name:target] — Remove a condition
+- [HEAL:N] — Heal N hit points
+- [DAMAGE:N:type] — Deal N damage of type (e.g., [DAMAGE:8:fire])
+Only use these tags when the narrative warrants a mechanical change. Do not use them for hypothetical or conditional events.
 PROMPT;
 
-    public function __construct(private AIManager $aiManager) {}
+    public function __construct(
+        private AIManager $aiManager,
+        private ?CharacterProgressionService $progressionService = null,
+        private ?CombatService $combatService = null,
+    ) {}
+
+    public function setProgressionService(CharacterProgressionService $service): void
+    {
+        $this->progressionService = $service;
+    }
+
+    public function setCombatService(CombatService $service): void
+    {
+        $this->combatService = $service;
+    }
 
     public function startSession(Campaign $campaign): GameSession
     {
@@ -100,12 +129,24 @@ PROMPT;
         $mood = $this->extractMood($response);
         $cleanContent = $this->stripMoodTag($response);
 
+        // Parse and apply game action tags
+        $actions = $this->parseGameActions($cleanContent);
+        $cleanContent = $this->stripActionTags($cleanContent);
+
+        if (!empty($actions)) {
+            $this->applyGameActions($campaign, $session, $actions);
+        }
+
         // Save and return the DM response
+        $metadata = [];
+        if ($mood) $metadata['mood'] = $mood;
+        if (!empty($actions)) $metadata['actions'] = $actions;
+
         return $session->messages()->create([
             'role' => 'assistant',
             'type' => 'narrative',
             'content' => $cleanContent,
-            'metadata' => $mood ? ['mood' => $mood] : null,
+            'metadata' => !empty($metadata) ? $metadata : null,
         ]);
     }
 
@@ -147,19 +188,69 @@ PROMPT;
         // Campaign setting
         $parts[] = "CAMPAIGN: {$campaign->title}\nSETTING: {$campaign->setting}";
 
-        // Character sheets
+        // Character sheets with full mechanical state
         foreach ($campaign->characters as $character) {
             $stats = $character->stats;
             $inventory = $character->inventory ? implode(', ', $character->inventory) : 'None';
-            $parts[] = implode("\n", [
+
+            $charLines = [
                 "PLAYER CHARACTER:",
                 "Name: {$character->name}",
                 "Race: {$character->race} | Class: {$character->character_class} | Level: {$character->level}",
-                "Stats: STR {$stats['str']} DEX {$stats['dex']} CON {$stats['con']} INT {$stats['int']} WIS {$stats['wis']} CHA {$stats['cha']}",
-                "HP: {$character->hp}/{$character->max_hp}",
-                "Inventory: {$inventory}",
-                $character->backstory ? "Backstory: {$character->backstory}" : '',
-            ]);
+                "XP: {$character->xp} | Proficiency Bonus: +{$character->proficiency_bonus}",
+                "Stats: STR {$stats['str']}(" . $character->getAbilityModifier('str') . ") DEX {$stats['dex']}(" . $character->getAbilityModifier('dex') . ") CON {$stats['con']}(" . $character->getAbilityModifier('con') . ") INT {$stats['int']}(" . $character->getAbilityModifier('int') . ") WIS {$stats['wis']}(" . $character->getAbilityModifier('wis') . ") CHA {$stats['cha']}(" . $character->getAbilityModifier('cha') . ")",
+                "HP: {$character->hp}/{$character->max_hp}" . ($character->temp_hp > 0 ? " (Temp: {$character->temp_hp})" : "") . " | AC: {$character->armor_class} | Speed: {$character->speed}ft",
+                "Hit Dice: {$character->hit_dice_remaining}/{$character->hit_dice_total} | Gold: {$character->gold}",
+            ];
+
+            // Equipped items
+            $equipped = $character->equipped ?? [];
+            if (!empty($equipped)) {
+                $eqParts = [];
+                foreach ($equipped as $slot => $slug) {
+                    if ($slug) $eqParts[] = "{$slot}: {$slug}";
+                }
+                $charLines[] = "Equipped: " . implode(', ', $eqParts);
+            }
+
+            // Spell info
+            if ($character->getSpellcastingAbility()) {
+                $charLines[] = "Spell Save DC: {$character->getSpellSaveDC()} | Spell Attack: +{$character->getSpellAttackMod()}";
+                $slots = $character->spell_slots ?? [];
+                $maxSlots = $character->spell_slots_max ?? [];
+                if (!empty($maxSlots)) {
+                    $slotParts = [];
+                    foreach ($maxSlots as $lvl => $max) {
+                        $current = $slots[$lvl] ?? 0;
+                        $slotParts[] = "L{$lvl}: {$current}/{$max}";
+                    }
+                    $charLines[] = "Spell Slots: " . implode(', ', $slotParts);
+                }
+                $prepared = $character->prepared_spells ?? [];
+                if (!empty($prepared)) {
+                    $charLines[] = "Prepared Spells: " . implode(', ', $prepared);
+                }
+            }
+
+            // Conditions
+            $conditions = $character->conditions ?? [];
+            if (!empty($conditions)) {
+                $condNames = array_map(fn($c) => $c['name'], $conditions);
+                $charLines[] = "Conditions: " . implode(', ', $condNames);
+            }
+
+            // Class features
+            $features = $character->class_features ?? [];
+            if (!empty($features)) {
+                $charLines[] = "Features: " . implode(', ', $features);
+            }
+
+            $charLines[] = "Inventory: {$inventory}";
+            if ($character->backstory) {
+                $charLines[] = "Backstory: {$character->backstory}";
+            }
+
+            $parts[] = implode("\n", $charLines);
         }
 
         // Game state
@@ -178,6 +269,21 @@ PROMPT;
                 $stateParts[] = "Key Facts: " . json_encode($state->world_facts);
             }
             $parts[] = implode("\n", $stateParts);
+        }
+
+        // Active combat state
+        $activeSession = $campaign->sessions()->where('status', 'active')->latest()->first();
+        if ($activeSession) {
+            $activeCombat = $activeSession->combatEncounters()->where('status', 'active')->first();
+            if ($activeCombat) {
+                $combatParts = ["ACTIVE COMBAT (Round {$activeCombat->round}):"];
+                foreach ($activeCombat->initiative_order as $i => $combatant) {
+                    $marker = $i === $activeCombat->current_turn ? '>>>' : '   ';
+                    $status = ($combatant['hp'] ?? 0) <= 0 ? 'DEAD' : "HP:{$combatant['hp']}/{$combatant['max_hp']}";
+                    $combatParts[] = "{$marker} {$combatant['name']} (Init:{$combatant['initiative']}) {$status} AC:{$combatant['ac']}";
+                }
+                $parts[] = implode("\n", $combatParts);
+            }
         }
 
         // Previous session recap
@@ -206,6 +312,107 @@ PROMPT;
             ])
             ->values()
             ->toArray();
+    }
+
+    public function parseGameActions(string $text): array
+    {
+        $actions = [];
+
+        if (preg_match('/\[XP:(\d+)\]/', $text, $m)) {
+            $actions[] = ['type' => 'xp', 'amount' => (int) $m[1]];
+        }
+        if (preg_match('/\[GOLD:(\d+)\]/', $text, $m)) {
+            $actions[] = ['type' => 'gold', 'amount' => (int) $m[1]];
+        }
+        if (preg_match('/\[COMBAT:START\]/', $text)) {
+            $actions[] = ['type' => 'combat_start'];
+        }
+        if (preg_match('/\[COMBAT:END\]/', $text)) {
+            $actions[] = ['type' => 'combat_end'];
+        }
+        if (preg_match_all('/\[ITEM:([\w-]+)\]/', $text, $matches)) {
+            foreach ($matches[1] as $slug) {
+                $actions[] = ['type' => 'item', 'slug' => $slug];
+            }
+        }
+        if (preg_match_all('/\[CONDITION:([\w]+):([\w]+)\]/', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $actions[] = ['type' => 'condition_add', 'condition' => $m[1], 'target' => $m[2]];
+            }
+        }
+        if (preg_match_all('/\[CONDITION_REMOVE:([\w]+):([\w]+)\]/', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $actions[] = ['type' => 'condition_remove', 'condition' => $m[1], 'target' => $m[2]];
+            }
+        }
+        if (preg_match('/\[HEAL:(\d+)\]/', $text, $m)) {
+            $actions[] = ['type' => 'heal', 'amount' => (int) $m[1]];
+        }
+        if (preg_match('/\[DAMAGE:(\d+):([\w]+)\]/', $text, $m)) {
+            $actions[] = ['type' => 'damage', 'amount' => (int) $m[1], 'damage_type' => $m[2]];
+        }
+
+        return $actions;
+    }
+
+    private function stripActionTags(string $text): string
+    {
+        $patterns = [
+            '/\s*\[XP:\d+\]/',
+            '/\s*\[GOLD:\d+\]/',
+            '/\s*\[COMBAT:(?:START|END)\]/',
+            '/\s*\[ITEM:[\w-]+\]/',
+            '/\s*\[CONDITION:[\w]+:[\w]+\]/',
+            '/\s*\[CONDITION_REMOVE:[\w]+:[\w]+\]/',
+            '/\s*\[HEAL:\d+\]/',
+            '/\s*\[DAMAGE:\d+:[\w]+\]/',
+        ];
+
+        return trim(preg_replace($patterns, '', $text));
+    }
+
+    private function applyGameActions(Campaign $campaign, GameSession $session, array $actions): void
+    {
+        $character = $campaign->characters()->first();
+        if (!$character) return;
+
+        foreach ($actions as $action) {
+            try {
+                match ($action['type']) {
+                    'xp' => $this->progressionService?->addXp($character, $action['amount']),
+                    'gold' => $this->applyGold($character, $action['amount']),
+                    'item' => $this->applyItem($character, $action['slug']),
+                    'heal' => $this->applyHeal($character, $action['amount']),
+                    'damage' => $this->combatService?->applyDamage($character, $action['amount'], $action['damage_type'] ?? ''),
+                    'condition_add' => $this->combatService?->applyCondition($character, $action['condition']),
+                    'condition_remove' => $this->combatService?->removeCondition($character, $action['condition']),
+                    'combat_end' => $this->combatService?->getActiveCombat($session)?->update(['status' => 'ended']),
+                    default => null,
+                };
+            } catch (\Throwable $e) {
+                Log::warning("Failed to apply game action: " . json_encode($action), ['error' => $e->getMessage()]);
+            }
+        }
+    }
+
+    private function applyGold(Character $character, int $amount): void
+    {
+        $character->gold += $amount;
+        $character->save();
+    }
+
+    private function applyItem(Character $character, string $slug): void
+    {
+        $inventory = $character->inventory ?? [];
+        $inventory[] = $slug;
+        $character->inventory = $inventory;
+        $character->save();
+    }
+
+    private function applyHeal(Character $character, int $amount): void
+    {
+        $character->hp = min($character->max_hp, $character->hp + $amount);
+        $character->save();
     }
 
     private function extractMood(string $text): ?string

@@ -29,6 +29,11 @@ class User extends Authenticatable
         return $this->hasMany(Character::class);
     }
 
+    public function characterTemplates(): HasMany
+    {
+        return $this->hasMany(CharacterTemplate::class);
+    }
+
     /**
      * Get the attributes that should be cast.
      *
