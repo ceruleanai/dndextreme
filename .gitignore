@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+vendor/
 
 # Build
 dist/
@@ -26,3 +27,7 @@ npm-debug.log*
 
 # Coverage
 coverage/
+
+# Laravel
+backend/storage/*.key
+backend/database/database.sqlite
