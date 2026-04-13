@@ -14,7 +14,7 @@ class VoiceModeController extends Controller
 
     public function getVoiceConfig(Request $request, Campaign $campaign, GameSession $session): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
         abort_unless($session->status === 'active', 422, 'Session is not active');
 
         $systemPrompt = $this->dm->buildSystemPrompt($campaign);
@@ -30,7 +30,7 @@ class VoiceModeController extends Controller
 
     public function saveTranscript(Request $request, Campaign $campaign, GameSession $session): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'exchanges' => 'required|array',

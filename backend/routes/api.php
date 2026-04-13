@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\CampaignPlayerController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\CharacterTemplateController;
 use App\Http\Controllers\CombatController;
@@ -66,6 +67,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/campaigns/{campaign}/sessions/{session}/combat/{encounter}/next-turn', [CombatController::class, 'nextTurn']);
     Route::post('/campaigns/{campaign}/sessions/{session}/combat/{encounter}/attack', [CombatController::class, 'attack']);
     Route::post('/campaigns/{campaign}/sessions/{session}/combat/{encounter}/end', [CombatController::class, 'end']);
+
+    // Campaign Players (multiplayer)
+    Route::get('/campaigns/{campaign}/players', [CampaignPlayerController::class, 'players']);
+    Route::post('/campaigns/{campaign}/players/invite', [CampaignPlayerController::class, 'generateInvite']);
+    Route::post('/campaigns/join', [CampaignPlayerController::class, 'join']);
+    Route::post('/campaigns/{campaign}/players/select-character', [CampaignPlayerController::class, 'selectCharacter']);
+    Route::post('/campaigns/{campaign}/players/leave', [CampaignPlayerController::class, 'leave']);
+    Route::post('/campaigns/{campaign}/players/kick', [CampaignPlayerController::class, 'kick']);
 
     // Character Templates (multi-campaign)
     Route::get('/character-templates', [CharacterTemplateController::class, 'index']);

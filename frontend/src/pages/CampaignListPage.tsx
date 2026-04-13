@@ -24,6 +24,7 @@ export default function CampaignListPage() {
           <div className="header-actions">
             <span>Welcome, {user?.name}</span>
             <button onClick={() => navigate('/campaigns/new')} className="btn-primary">New Campaign</button>
+            <button onClick={() => navigate('/campaigns/join')} className="btn-secondary">Join Campaign</button>
             <button onClick={logout} className="btn-secondary">Logout</button>
           </div>
         </header>

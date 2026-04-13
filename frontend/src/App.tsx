@@ -7,6 +7,7 @@ import CreateCampaignPage from './pages/CreateCampaignPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import CreateCharacterPage from './pages/CreateCharacterPage';
 import GamePlayPage from './pages/GamePlayPage';
+import JoinCampaignPage from './pages/JoinCampaignPage';
 import './App.css';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -26,6 +27,7 @@ function AppRoutes() {
       <Route path="/register" element={user ? <Navigate to="/campaigns" /> : <RegisterPage />} />
       <Route path="/campaigns" element={<ProtectedRoute><CampaignListPage /></ProtectedRoute>} />
       <Route path="/campaigns/new" element={<ProtectedRoute><CreateCampaignPage /></ProtectedRoute>} />
+      <Route path="/campaigns/join" element={<ProtectedRoute><JoinCampaignPage /></ProtectedRoute>} />
       <Route path="/campaigns/:id" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
       <Route path="/campaigns/:id/character/new" element={<ProtectedRoute><CreateCharacterPage /></ProtectedRoute>} />
       <Route path="/campaigns/:id/play" element={<ProtectedRoute><GamePlayPage /></ProtectedRoute>} />

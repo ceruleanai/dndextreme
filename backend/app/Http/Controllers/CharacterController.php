@@ -24,7 +24,7 @@ class CharacterController extends Controller
 
     public function store(Request $request, Campaign $campaign): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -57,14 +57,14 @@ class CharacterController extends Controller
 
     public function show(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         return response()->json($this->progression->getFullSheet($character));
     }
 
     public function update(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -85,7 +85,7 @@ class CharacterController extends Controller
 
     public function levelUp(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $result = $this->progression->levelUp($character);
 
@@ -98,7 +98,7 @@ class CharacterController extends Controller
 
     public function addXp(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'xp' => 'required|integer|min:1',
@@ -109,7 +109,7 @@ class CharacterController extends Controller
 
     public function applyAsi(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'increases' => 'required|array',
@@ -129,7 +129,7 @@ class CharacterController extends Controller
 
     public function castSpell(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'spell' => 'required|string',
@@ -147,7 +147,7 @@ class CharacterController extends Controller
 
     public function prepareSpells(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'spells' => 'required|array',
@@ -165,7 +165,7 @@ class CharacterController extends Controller
 
     public function learnSpell(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'spell' => 'required|string',
@@ -182,7 +182,7 @@ class CharacterController extends Controller
 
     public function spells(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         return response()->json([
             'known' => $character->known_spells ?? [],
@@ -197,7 +197,7 @@ class CharacterController extends Controller
 
     public function shortRest(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'hit_dice' => 'integer|min:0|max:20',
@@ -208,7 +208,7 @@ class CharacterController extends Controller
 
     public function longRest(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         return response()->json($this->rest->longRest($character));
     }
@@ -217,7 +217,7 @@ class CharacterController extends Controller
 
     public function applyDamage(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'damage' => 'required|integer|min:1',
@@ -231,7 +231,7 @@ class CharacterController extends Controller
 
     public function heal(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'amount' => 'required|integer|min:1',
@@ -248,7 +248,7 @@ class CharacterController extends Controller
 
     public function deathSave(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'roll' => 'required|integer|min:1|max:20',
@@ -265,7 +265,7 @@ class CharacterController extends Controller
 
     public function equip(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'slot' => 'required|string|in:armor,weapon,shield,offhand',
@@ -290,7 +290,7 @@ class CharacterController extends Controller
 
     public function generatePortrait(Request $request, Campaign $campaign, Character $character): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'prompt' => 'nullable|string|max:500',

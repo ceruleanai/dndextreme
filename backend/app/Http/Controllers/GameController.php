@@ -14,7 +14,7 @@ class GameController extends Controller
 
     public function startSession(Request $request, Campaign $campaign): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isOwner($request->user()), 403);
 
         // End any existing active session first
         $activeSession = $campaign->activeSession;
@@ -29,7 +29,7 @@ class GameController extends Controller
 
     public function showSession(Request $request, Campaign $campaign, GameSession $session): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $session->load('messages');
 
@@ -38,23 +38,33 @@ class GameController extends Controller
 
     public function sendMessage(Request $request, Campaign $campaign, GameSession $session): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
         abort_unless($session->status === 'active', 422, 'Session is not active');
 
         $request->validate([
             'message' => 'required|string|max:2000',
         ]);
 
-        $response = $this->dm->chat($session, $request->input('message'));
+        $user = $request->user();
+        $playerRecord = $campaign->getPlayerRecord($user);
+        $character = $playerRecord?->character;
+
+        $response = $this->dm->chat(
+            $session,
+            $request->input('message'),
+            $user,
+            $character
+        );
 
         return response()->json($response);
     }
 
     public function getMessages(Request $request, Campaign $campaign, GameSession $session): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $messages = $session->messages()
+            ->with('character:id,name')
             ->orderBy('created_at')
             ->get();
 
@@ -63,7 +73,7 @@ class GameController extends Controller
 
     public function endSession(Request $request, Campaign $campaign, GameSession $session): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isOwner($request->user()), 403);
         abort_unless($session->status === 'active', 422, 'Session is already ended');
 
         $session = $this->dm->endSession($session);

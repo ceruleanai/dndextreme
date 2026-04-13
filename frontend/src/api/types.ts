@@ -10,11 +10,24 @@ export interface Campaign {
   setting: string;
   status: 'draft' | 'active' | 'completed' | 'archived';
   ai_provider: string | null;
+  invite_code: string | null;
   characters_count?: number;
   sessions_count?: number;
+  players_count?: number;
   characters?: Character[];
+  players?: CampaignPlayer[];
   active_session?: GameSession | null;
   created_at: string;
+}
+
+export interface CampaignPlayer {
+  id: number;
+  campaign_id: number;
+  user_id: number;
+  character_id: number | null;
+  role: 'owner' | 'player';
+  user?: User;
+  character?: Pick<Character, 'id' | 'name' | 'race' | 'character_class' | 'level' | 'portrait_path'>;
 }
 
 export interface Character {
@@ -222,6 +235,9 @@ export interface Message {
   type: string | null;
   content: string;
   metadata: Record<string, unknown> | null;
+  user_id?: number | null;
+  character_id?: number | null;
+  character?: Pick<Character, 'id' | 'name'> | null;
   created_at: string;
 }
 

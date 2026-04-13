@@ -15,7 +15,7 @@ class MapController extends Controller
 
     public function index(Request $request, Campaign $campaign): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $maps = $campaign->maps()
             ->when($request->query('type'), fn($q, $type) => $q->where('map_type', $type))
@@ -27,7 +27,7 @@ class MapController extends Controller
 
     public function current(Request $request, Campaign $campaign): JsonResponse|Response
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $state = $campaign->gameState;
         if (!$state || !$state->current_map_id) {
@@ -39,7 +39,7 @@ class MapController extends Controller
 
     public function upload(Request $request, Campaign $campaign): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $request->validate([
             'image' => 'required|image|max:10240',
@@ -63,7 +63,7 @@ class MapController extends Controller
 
     public function setActive(Request $request, Campaign $campaign, CampaignMap $map): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $state = $campaign->gameState;
         if ($state) {
@@ -76,7 +76,7 @@ class MapController extends Controller
 
     public function destroy(Request $request, Campaign $campaign, CampaignMap $map): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $map->delete();
 

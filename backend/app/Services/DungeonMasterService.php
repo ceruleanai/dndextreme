@@ -35,19 +35,25 @@ RESPONSE FORMAT:
 - End narration segments with a clear prompt for player action.
 - On the very last line of every response, include a mood tag that reflects the current scene atmosphere. Use exactly this format: [MOOD:exploration], [MOOD:tavern], [MOOD:combat], [MOOD:dungeon], [MOOD:mystical], or [MOOD:camp]. Choose the one that best fits the scene: exploration for travel/outdoors, tavern for social/indoor warmth, combat for battle/tension, dungeon for dark/underground/danger, mystical for magic/wonder, camp for rest/calm.
 
+MULTIPLAYER:
+- Multiple players may be in the party. Each player message is prefixed with their character name in brackets, e.g. "[Thorin]: I attack the goblin".
+- Address players by their character name. Respond to all players' actions in a single response.
+- When applying mechanical effects, specify which character using the :target suffix with the character's name.
+- If only one player character exists, target tags are optional.
+
 GAME MECHANIC TAGS:
 When narrative events trigger mechanical changes, include tags on their own line at the end of your response (before the MOOD tag). Use these formats:
-- [XP:N] — Award N experience points (e.g., after defeating enemies, completing quests)
-- [GOLD:N] — Award N gold pieces (e.g., loot, rewards)
+- [XP:N] — Award N experience points to ALL player characters (party XP)
+- [GOLD:N:CharacterName] — Award N gold pieces to a specific character (e.g., [GOLD:20:Thorin]). Omit name to award to all.
 - [COMBAT:START] — When combat begins. Follow with combatant details.
 - [COMBAT:END] — When combat ends.
-- [ITEM:slug] — When player finds/receives an item (use equipment slugs like "longsword", "chain-mail")
-- [CONDITION:name:target] — Apply a condition (e.g., [CONDITION:poisoned:player])
-- [CONDITION_REMOVE:name:target] — Remove a condition
-- [HEAL:N] — Heal N hit points
-- [DAMAGE:N:type] — Deal N damage of type (e.g., [DAMAGE:8:fire])
-- [SPELL:spell-slug:level] — When the player narratively casts a spell. Use the spell slug and slot level. (e.g., [SPELL:cure-wounds:1]). Only use when the player clearly describes casting a spell. This consumes the spell slot automatically.
-- [DEATH_SAVE:roll] — When a downed player rolls a death save. Use the d20 result. (e.g., [DEATH_SAVE:14])
+- [ITEM:slug:CharacterName] — When a character finds/receives an item (e.g., [ITEM:longsword:Thorin]). Omit name to give to first/default character.
+- [CONDITION:name:CharacterName] — Apply a condition to a specific character (e.g., [CONDITION:poisoned:Elara])
+- [CONDITION_REMOVE:name:CharacterName] — Remove a condition from a specific character
+- [HEAL:N:CharacterName] — Heal a specific character N hit points. Omit name to heal all.
+- [DAMAGE:N:type:CharacterName] — Deal N damage of type to a specific character (e.g., [DAMAGE:8:fire:Thorin]). Omit name to damage first/default.
+- [SPELL:spell-slug:level:CharacterName] — When a character casts a spell (e.g., [SPELL:cure-wounds:1:Elara]). Omit name if only one caster.
+- [DEATH_SAVE:roll:CharacterName] — When a downed character rolls a death save (e.g., [DEATH_SAVE:14:Thorin])
 - [LOCATION:category:name] — When the party moves to a new distinct location. Categories: tavern, forest, dungeon, cave, town, castle, road, camp, temple, ruins, mountain, swamp, dock, sewer, ship. Use a specific location name. Example: [LOCATION:tavern:The Golden Goose Inn]
 
 WORLD STATE TAGS:
@@ -134,15 +140,23 @@ PROMPT;
         return $session->load('messages');
     }
 
-    public function chat(GameSession $session, string $playerMessage): Message
+    public function chat(GameSession $session, string $playerMessage, ?\App\Models\User $user = null, ?\App\Models\Character $character = null): Message
     {
         $campaign = $session->campaign;
 
-        // Save the player's message
+        // Prefix message with character name for multi-player context
+        $storedContent = $playerMessage;
+        $contextContent = $character
+            ? "[{$character->name}]: {$playerMessage}"
+            : $playerMessage;
+
+        // Save the player's message with user/character attribution
         $session->messages()->create([
             'role' => 'user',
             'type' => 'action',
-            'content' => $playerMessage,
+            'content' => $storedContent,
+            'user_id' => $user?->id,
+            'character_id' => $character?->id,
         ]);
 
         // Check if we need to summarize older messages
@@ -307,9 +321,12 @@ PROMPT;
         // Campaign setting
         $parts[] = "CAMPAIGN: {$campaign->title}\nSETTING: {$campaign->setting}";
 
-        // Character sheets with full mechanical state
+        // Character sheets with full mechanical state and player mapping
+        $campaign->load('players.user:id,name');
         foreach ($campaign->characters as $character) {
-            $parts[] = $this->buildCharacterBlock($character);
+            $playerRecord = $campaign->players->firstWhere('character_id', $character->id);
+            $playerName = $playerRecord?->user?->name;
+            $parts[] = $this->buildCharacterBlock($character, $playerName);
         }
 
         // Game state
@@ -350,13 +367,18 @@ PROMPT;
         return implode("\n\n", $parts);
     }
 
-    private function buildCharacterBlock(Character $character): string
+    private function buildCharacterBlock(Character $character, ?string $playerName = null): string
     {
         $stats = $character->stats;
         $inventory = $character->inventory ? implode(', ', $character->inventory) : 'None';
 
+        $header = "PLAYER CHARACTER:";
+        if ($playerName) {
+            $header = "PLAYER CHARACTER (Player: {$playerName}):";
+        }
+
         $charLines = [
-            "PLAYER CHARACTER:",
+            $header,
             "Name: {$character->name}",
             "Race: {$character->race} | Class: {$character->character_class} | Level: {$character->level}",
             "XP: {$character->xp} | Proficiency Bonus: +{$character->proficiency_bonus}",
@@ -470,14 +492,22 @@ PROMPT;
     public function getRecentMessages(GameSession $session): array
     {
         return $session->messages()
+            ->with('character:id,name')
             ->orderBy('created_at', 'desc')
             ->limit(self::MAX_CONTEXT_MESSAGES)
             ->get()
             ->reverse()
-            ->map(fn(Message $msg) => [
-                'role' => $msg->role === 'system' ? 'user' : $msg->role,
-                'content' => $msg->content,
-            ])
+            ->map(function (Message $msg) {
+                $content = $msg->content;
+                // Prefix player messages with character name for AI context
+                if ($msg->role === 'user' && $msg->character) {
+                    $content = "[{$msg->character->name}]: {$content}";
+                }
+                return [
+                    'role' => $msg->role === 'system' ? 'user' : $msg->role,
+                    'content' => $content,
+                ];
+            })
             ->values()
             ->toArray();
     }
@@ -490,11 +520,17 @@ PROMPT;
     {
         $actions = [];
 
+        // XP is always party-wide, no target needed
         if (preg_match('/\[XP:(\d+)\]/', $text, $m)) {
             $actions[] = ['type' => 'xp', 'amount' => (int) $m[1]];
         }
-        if (preg_match('/\[GOLD:(\d+)\]/', $text, $m)) {
-            $actions[] = ['type' => 'gold', 'amount' => (int) $m[1]];
+        // GOLD with optional :CharacterName
+        if (preg_match_all('/\[GOLD:(\d+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $action = ['type' => 'gold', 'amount' => (int) $m[1]];
+                if (!empty($m[2])) $action['target'] = trim($m[2]);
+                $actions[] = $action;
+            }
         }
         if (preg_match('/\[COMBAT:START\]/', $text)) {
             $actions[] = ['type' => 'combat_start'];
@@ -502,39 +538,63 @@ PROMPT;
         if (preg_match('/\[COMBAT:END\]/', $text)) {
             $actions[] = ['type' => 'combat_end'];
         }
-        if (preg_match_all('/\[ITEM:([\w-]+)\]/', $text, $matches)) {
-            foreach ($matches[1] as $slug) {
-                $actions[] = ['type' => 'item', 'slug' => $slug];
-            }
-        }
-        if (preg_match_all('/\[CONDITION:([\w]+):([\w]+)\]/', $text, $matches, PREG_SET_ORDER)) {
+        // ITEM with optional :CharacterName
+        if (preg_match_all('/\[ITEM:([\w-]+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $m) {
-                $actions[] = ['type' => 'condition_add', 'condition' => $m[1], 'target' => $m[2]];
+                $action = ['type' => 'item', 'slug' => $m[1]];
+                if (!empty($m[2])) $action['target'] = trim($m[2]);
+                $actions[] = $action;
             }
         }
-        if (preg_match_all('/\[CONDITION_REMOVE:([\w]+):([\w]+)\]/', $text, $matches, PREG_SET_ORDER)) {
+        // CONDITION with required condition name and optional :CharacterName
+        if (preg_match_all('/\[CONDITION:([\w]+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $m) {
-                $actions[] = ['type' => 'condition_remove', 'condition' => $m[1], 'target' => $m[2]];
+                $action = ['type' => 'condition_add', 'condition' => $m[1]];
+                if (!empty($m[2])) $action['target'] = trim($m[2]);
+                $actions[] = $action;
             }
         }
-        if (preg_match('/\[HEAL:(\d+)\]/', $text, $m)) {
-            $actions[] = ['type' => 'heal', 'amount' => (int) $m[1]];
+        if (preg_match_all('/\[CONDITION_REMOVE:([\w]+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $action = ['type' => 'condition_remove', 'condition' => $m[1]];
+                if (!empty($m[2])) $action['target'] = trim($m[2]);
+                $actions[] = $action;
+            }
         }
-        if (preg_match('/\[DAMAGE:(\d+):([\w]+)\]/', $text, $m)) {
-            $actions[] = ['type' => 'damage', 'amount' => (int) $m[1], 'damage_type' => $m[2]];
+        // HEAL with optional :CharacterName
+        if (preg_match_all('/\[HEAL:(\d+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $action = ['type' => 'heal', 'amount' => (int) $m[1]];
+                if (!empty($m[2])) $action['target'] = trim($m[2]);
+                $actions[] = $action;
+            }
+        }
+        // DAMAGE with type and optional :CharacterName
+        if (preg_match_all('/\[DAMAGE:(\d+):([\w]+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $action = ['type' => 'damage', 'amount' => (int) $m[1], 'damage_type' => $m[2]];
+                if (!empty($m[3])) $action['target'] = trim($m[3]);
+                $actions[] = $action;
+            }
         }
         if (preg_match('/\[LOCATION:([\w]+):([^\]]+)\]/', $text, $m)) {
             $actions[] = ['type' => 'location_change', 'category' => $m[1], 'name' => trim($m[2])];
         }
-        // Spell casting tag
-        if (preg_match_all('/\[SPELL:([\w-]+):(\d+)\]/', $text, $matches, PREG_SET_ORDER)) {
+        // SPELL with optional :CharacterName
+        if (preg_match_all('/\[SPELL:([\w-]+):(\d+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $m) {
-                $actions[] = ['type' => 'spell_cast', 'spell' => $m[1], 'level' => (int) $m[2]];
+                $action = ['type' => 'spell_cast', 'spell' => $m[1], 'level' => (int) $m[2]];
+                if (!empty($m[3])) $action['target'] = trim($m[3]);
+                $actions[] = $action;
             }
         }
-        // Death save tag
-        if (preg_match('/\[DEATH_SAVE:(\d+)\]/', $text, $m)) {
-            $actions[] = ['type' => 'death_save', 'roll' => (int) $m[1]];
+        // DEATH_SAVE with optional :CharacterName
+        if (preg_match_all('/\[DEATH_SAVE:(\d+)(?::([^\]]+))?\]/', $text, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $action = ['type' => 'death_save', 'roll' => (int) $m[1]];
+                if (!empty($m[2])) $action['target'] = trim($m[2]);
+                $actions[] = $action;
+            }
         }
 
         return $actions;
@@ -579,16 +639,16 @@ PROMPT;
     {
         $patterns = [
             '/\s*\[XP:\d+\]/',
-            '/\s*\[GOLD:\d+\]/',
+            '/\s*\[GOLD:\d+(?::[^\]]+)?\]/',
             '/\s*\[COMBAT:(?:START|END)\]/',
-            '/\s*\[ITEM:[\w-]+\]/',
-            '/\s*\[CONDITION:[\w]+:[\w]+\]/',
-            '/\s*\[CONDITION_REMOVE:[\w]+:[\w]+\]/',
-            '/\s*\[HEAL:\d+\]/',
-            '/\s*\[DAMAGE:\d+:[\w]+\]/',
+            '/\s*\[ITEM:[\w-]+(?::[^\]]+)?\]/',
+            '/\s*\[CONDITION:[\w]+(?::[^\]]+)?\]/',
+            '/\s*\[CONDITION_REMOVE:[\w]+(?::[^\]]+)?\]/',
+            '/\s*\[HEAL:\d+(?::[^\]]+)?\]/',
+            '/\s*\[DAMAGE:\d+:[\w]+(?::[^\]]+)?\]/',
             '/\s*\[LOCATION:[\w]+:[^\]]+\]/',
-            '/\s*\[SPELL:[\w-]+:\d+\]/',
-            '/\s*\[DEATH_SAVE:\d+\]/',
+            '/\s*\[SPELL:[\w-]+:\d+(?::[^\]]+)?\]/',
+            '/\s*\[DEATH_SAVE:\d+(?::[^\]]+)?\]/',
         ];
 
         return trim(preg_replace($patterns, '', $text));
@@ -612,23 +672,33 @@ PROMPT;
 
     private function applyGameActions(Campaign $campaign, GameSession $session, array $actions): void
     {
-        $character = $campaign->characters()->first();
-        if (!$character) return;
+        $characters = $campaign->characters()->get();
+        $defaultCharacter = $characters->first();
+        if (!$defaultCharacter && !collect($actions)->contains(fn($a) => in_array($a['type'], ['combat_start', 'combat_end', 'location_change']))) {
+            return;
+        }
 
         foreach ($actions as $action) {
             try {
+                // Resolve target character by name, fall back to default
+                $character = $defaultCharacter;
+                if (!empty($action['target'])) {
+                    $found = $characters->first(fn($c) => strcasecmp($c->name, $action['target']) === 0);
+                    if ($found) $character = $found;
+                }
+
                 match ($action['type']) {
-                    'xp' => $this->progressionService?->addXp($character, $action['amount']),
-                    'gold' => $this->applyGold($character, $action['amount']),
-                    'item' => $this->applyItem($character, $action['slug']),
-                    'heal' => $this->applyHeal($character, $action['amount']),
-                    'damage' => $this->combatService?->applyDamage($character, $action['amount'], $action['damage_type'] ?? ''),
-                    'condition_add' => $this->combatService?->applyCondition($character, $action['condition']),
-                    'condition_remove' => $this->combatService?->removeCondition($character, $action['condition']),
+                    'xp' => $characters->each(fn($c) => $this->progressionService?->addXp($c, $action['amount'])),
+                    'gold' => $character ? $this->applyGold($character, $action['amount']) : null,
+                    'item' => $character ? $this->applyItem($character, $action['slug']) : null,
+                    'heal' => $character ? $this->applyHeal($character, $action['amount']) : null,
+                    'damage' => $character ? $this->combatService?->applyDamage($character, $action['amount'], $action['damage_type'] ?? '') : null,
+                    'condition_add' => $character ? $this->combatService?->applyCondition($character, $action['condition']) : null,
+                    'condition_remove' => $character ? $this->combatService?->removeCondition($character, $action['condition']) : null,
                     'combat_end' => $this->combatService?->getActiveCombat($session)?->update(['status' => 'ended']),
                     'location_change' => $this->applyLocationChange($campaign, $action['category'], $action['name']),
-                    'spell_cast' => $this->applySpellCast($character, $action['spell'], $action['level']),
-                    'death_save' => $this->applyDeathSave($character, $action['roll']),
+                    'spell_cast' => $character ? $this->applySpellCast($character, $action['spell'], $action['level']) : null,
+                    'death_save' => $character ? $this->applyDeathSave($character, $action['roll']) : null,
                     default => null,
                 };
             } catch (\Throwable $e) {

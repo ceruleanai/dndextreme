@@ -16,7 +16,7 @@ class CombatController extends Controller
 
     public function start(Request $request, Campaign $campaign, GameSession $session): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'combatants' => 'required|array|min:2',
@@ -37,7 +37,7 @@ class CombatController extends Controller
 
     public function show(Request $request, Campaign $campaign, GameSession $session): JsonResponse|Response
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $encounter = $this->combat->getActiveCombat($session);
 
@@ -50,14 +50,14 @@ class CombatController extends Controller
 
     public function nextTurn(Request $request, Campaign $campaign, GameSession $session, CombatEncounter $encounter): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         return response()->json($this->combat->nextTurn($encounter));
     }
 
     public function attack(Request $request, Campaign $campaign, GameSession $session, CombatEncounter $encounter): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $validated = $request->validate([
             'attacker_index' => 'required|integer|min:0',
@@ -85,7 +85,7 @@ class CombatController extends Controller
 
     public function end(Request $request, Campaign $campaign, GameSession $session, CombatEncounter $encounter): JsonResponse
     {
-        abort_unless($campaign->user_id === $request->user()->id, 403);
+        abort_unless($campaign->isMember($request->user()), 403);
 
         $this->combat->endCombat($encounter);
 

@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../api/client';
 import { Campaign, Character, Message, GameSession, MapMetadata, CampaignMap, CombatEncounter } from '../api/types';
+import { useAuth } from '../context/AuthContext';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useTTS } from '../hooks/useTTS';
 import { useAmbientMusic, Mood } from '../hooks/useAmbientMusic';
@@ -14,11 +15,13 @@ import CombatTracker from '../components/CombatTracker';
 const MapPanel = lazy(() => import('../components/MapPanel'));
 
 const VALID_MOODS: Mood[] = ['exploration', 'tavern', 'combat', 'dungeon', 'mystical', 'camp'];
+const POLL_INTERVAL = 5000;
 
 export default function GamePlayPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const sessionId = searchParams.get('session');
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -39,6 +42,10 @@ export default function GamePlayPage() {
   }, []);
   const { listening, toggle: toggleVoice, isSupported: voiceSupported } = useVoiceInput(onVoiceResult);
 
+  // Find my character from campaign players
+  const myPlayer = campaign?.players?.find(p => p.user_id === user?.id);
+  const myCharacterId = myPlayer?.character_id;
+
   useEffect(() => {
     if (!id || !sessionId) return;
     api.get<Campaign>(`/campaigns/${id}`).then(setCampaign);
@@ -55,6 +62,27 @@ export default function GamePlayPage() {
       .then(setCombatData)
       .catch(() => setCombatData(null));
   }, [id, sessionId]);
+
+  // Poll for new messages in multiplayer
+  useEffect(() => {
+    if (!id || !sessionId || sessionStatus !== 'active') return;
+
+    const interval = setInterval(async () => {
+      if (sending) return; // Don't poll while sending
+      try {
+        const msgs = await api.get<Message[]>(`/campaigns/${id}/sessions/${sessionId}/messages`);
+        setMessages(prev => {
+          // Only update if there are actually new messages
+          if (msgs.length > prev.length) return msgs;
+          return prev;
+        });
+      } catch {
+        // Ignore poll errors
+      }
+    }, POLL_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [id, sessionId, sessionStatus, sending]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,6 +130,8 @@ export default function GamePlayPage() {
       type: 'action',
       content: playerMsg,
       metadata: null,
+      user_id: user?.id,
+      character: myPlayer?.character ? { id: myPlayer.character.id, name: myPlayer.character.name } : null,
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, tempPlayerMsg]);
@@ -144,12 +174,30 @@ export default function GamePlayPage() {
 
   const [character, setCharacter] = useState<Character | null>(null);
 
-  // Load full character sheet
+  // Load full character sheet for current user's character
   useEffect(() => {
-    if (!campaign?.characters?.[0]) return;
-    const char = campaign.characters[0];
-    api.get<Character>(`/campaigns/${id}/characters/${char.id}`).then(setCharacter);
-  }, [campaign, id]);
+    if (!campaign || !myCharacterId) {
+      // Fallback: load first character if no player mapping
+      if (campaign?.characters?.[0]) {
+        const char = campaign.characters[0];
+        api.get<Character>(`/campaigns/${id}/characters/${char.id}`).then(setCharacter);
+      }
+      return;
+    }
+    api.get<Character>(`/campaigns/${id}/characters/${myCharacterId}`).then(setCharacter);
+  }, [campaign, id, myCharacterId]);
+
+  const getMessageSender = (msg: Message): string => {
+    if (msg.role === 'assistant') return 'Dungeon Master';
+    if (msg.character?.name) return msg.character.name;
+    if (msg.user_id === user?.id) return 'You';
+    return 'Player';
+  };
+
+  const isMyMessage = (msg: Message): boolean => {
+    if (msg.role !== 'user') return false;
+    return msg.user_id === user?.id || !msg.user_id;
+  };
 
   return (
     <div className="game-layout">
@@ -178,6 +226,21 @@ export default function GamePlayPage() {
             campaignId={id!}
             sessionId={sessionId}
           />
+        )}
+
+        {/* Party members */}
+        {campaign?.players && campaign.players.length > 1 && (
+          <div className="sidebar-section">
+            <h4>Party</h4>
+            <div className="party-list">
+              {campaign.players.filter(p => p.character).map(p => (
+                <div key={p.id} className="party-member">
+                  <span className="party-member-name">{p.character!.name}</span>
+                  <span className="party-member-class">{p.character!.race} {p.character!.character_class}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         <div className="sidebar-section">
@@ -237,9 +300,9 @@ export default function GamePlayPage() {
         )}
         <div className="messages-area">
           {messages.map(msg => (
-            <div key={msg.id} className={`message message-${msg.role}`}>
+            <div key={msg.id} className={`message message-${msg.role}${isMyMessage(msg) ? ' message-mine' : ''}`}>
               <div className="message-header">
-                <span>{msg.role === 'assistant' ? 'Dungeon Master' : 'You'}</span>
+                <span>{getMessageSender(msg)}</span>
                 {msg.role === 'assistant' && (
                   <button
                     className={`btn-speak-msg ${speakingId === msg.id ? 'btn-speak-active' : ''}`}

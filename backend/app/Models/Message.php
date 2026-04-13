@@ -11,6 +11,7 @@ class Message extends Model
 
     protected $fillable = [
         'game_session_id', 'role', 'type', 'content', 'metadata',
+        'user_id', 'character_id',
     ];
 
     protected function casts(): array
@@ -24,5 +25,15 @@ class Message extends Model
     public function gameSession(): BelongsTo
     {
         return $this->belongsTo(GameSession::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function character(): BelongsTo
+    {
+        return $this->belongsTo(Character::class);
     }
 }
