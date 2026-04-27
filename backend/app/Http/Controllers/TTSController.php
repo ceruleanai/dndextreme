@@ -18,9 +18,10 @@ class TTSController extends Controller
         $apiKey = config('ai.providers.gemini.api_key');
         $text = $request->input('text');
         $voice = $request->input('voice', 'Charon');
+        $model = config('ai.tts_model', 'gemini-2.5-flash-preview-tts');
 
         $response = Http::timeout(30)->post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={$apiKey}",
+            "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apiKey}",
             [
                 'contents' => [
                     [

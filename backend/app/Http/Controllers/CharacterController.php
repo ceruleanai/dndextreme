@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campaign;
 use App\Models\Character;
-use App\Services\AI\GeminiProvider;
+use App\Services\AI\AIManager;
 use App\Services\CharacterProgressionService;
 use App\Services\CombatService;
 use App\Services\RestService;
@@ -20,6 +20,7 @@ class CharacterController extends Controller
         private SpellcastingService $spellcasting,
         private CombatService $combat,
         private RestService $rest,
+        private AIManager $aiManager,
     ) {}
 
     public function store(Request $request, Campaign $campaign): JsonResponse
@@ -327,24 +328,16 @@ class CharacterController extends Controller
 
     private function generatePortraitImage(Character $character, string $userPrompt): ?string
     {
-        $basePrompt = "Fantasy D&D character portrait card art. "
-            . "{$character->race} {$character->character_class}, named {$character->name}. "
-            . "Level {$character->level}. ";
+        $prompt = self::buildPortraitPrompt(
+            $character->name,
+            $character->race,
+            $character->character_class,
+            $character->backstory,
+            $userPrompt,
+            $character->level,
+        );
 
-        if ($character->backstory) {
-            $basePrompt .= "Background: " . mb_substr($character->backstory, 0, 200) . ". ";
-        }
-
-        if ($userPrompt) {
-            $basePrompt .= "Additional details: {$userPrompt}. ";
-        }
-
-        $basePrompt .= "Style: detailed fantasy illustration, dramatic lighting, rich colors, "
-            . "character portrait framing (head and shoulders or upper body). "
-            . "Do NOT include any text, labels, or watermarks in the image.";
-
-        $gemini = new GeminiProvider();
-        return $gemini->generateImage($basePrompt);
+        return $this->aiManager->imageProvider()->generateImage($prompt);
     }
 
     public function previewPortrait(Request $request): JsonResponse
@@ -357,23 +350,15 @@ class CharacterController extends Controller
             'prompt' => 'nullable|string|max:500',
         ]);
 
-        $prompt = "Fantasy D&D character portrait card art. "
-            . "{$validated['race']} {$validated['character_class']}, named {$validated['name']}. ";
+        $prompt = self::buildPortraitPrompt(
+            $validated['name'],
+            $validated['race'],
+            $validated['character_class'],
+            $validated['backstory'] ?? null,
+            $validated['prompt'] ?? '',
+        );
 
-        if (!empty($validated['backstory'])) {
-            $prompt .= "Background: " . mb_substr($validated['backstory'], 0, 200) . ". ";
-        }
-
-        if (!empty($validated['prompt'])) {
-            $prompt .= "Additional details: {$validated['prompt']}. ";
-        }
-
-        $prompt .= "Style: detailed fantasy illustration, dramatic lighting, rich colors, "
-            . "character portrait framing (head and shoulders or upper body). "
-            . "Do NOT include any text, labels, or watermarks in the image.";
-
-        $gemini = new GeminiProvider();
-        $base64 = $gemini->generateImage($prompt);
+        $base64 = $this->aiManager->imageProvider()->generateImage($prompt);
 
         if (!$base64) {
             return response()->json(['error' => 'Failed to generate portrait'], 500);
@@ -382,5 +367,35 @@ class CharacterController extends Controller
         return response()->json([
             'image_base64' => $base64,
         ]);
+    }
+
+    private static function buildPortraitPrompt(
+        string $name,
+        string $race,
+        string $class,
+        ?string $backstory,
+        string $userPrompt = '',
+        ?int $level = null,
+    ): string {
+        $prompt = "Fantasy D&D character portrait card art. "
+            . "{$race} {$class}, named {$name}. ";
+
+        if ($level) {
+            $prompt .= "Level {$level}. ";
+        }
+
+        if ($backstory) {
+            $prompt .= "Background: " . mb_substr($backstory, 0, 200) . ". ";
+        }
+
+        if ($userPrompt) {
+            $prompt .= "Additional details: {$userPrompt}. ";
+        }
+
+        $prompt .= "Style: detailed fantasy illustration, dramatic lighting, rich colors, "
+            . "character portrait framing (head and shoulders or upper body). "
+            . "Do NOT include any text, labels, or watermarks in the image.";
+
+        return $prompt;
     }
 }

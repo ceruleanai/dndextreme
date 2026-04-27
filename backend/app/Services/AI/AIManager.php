@@ -16,4 +16,14 @@ class AIManager
             default => throw new InvalidArgumentException("Unsupported AI provider: {$name}"),
         };
     }
+
+    /**
+     * Get the provider used for image generation.
+     * Currently only Gemini supports native image generation;
+     * ClaudeProvider delegates to Gemini internally.
+     */
+    public function imageProvider(): AIProvider
+    {
+        return new GeminiProvider();
+    }
 }

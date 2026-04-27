@@ -181,11 +181,15 @@ PROMPT;
         $worldUpdates = $this->parseWorldStateTags($cleanContent);
         $cleanContent = $this->stripWorldStateTags($cleanContent);
 
-        if (!empty($actions)) {
-            $this->applyGameActions($campaign, $session, $actions);
-        }
-        if (!empty($worldUpdates)) {
-            $this->applyWorldStateUpdates($campaign, $worldUpdates);
+        if (!empty($actions) || !empty($worldUpdates)) {
+            if (!empty($actions)) {
+                $this->applyGameActions($campaign, $session, $actions);
+            }
+            if (!empty($worldUpdates)) {
+                $this->applyWorldStateUpdates($campaign, $worldUpdates);
+            }
+            // Invalidate cached system prompt since game state changed
+            $this->invalidateCampaignCache($campaign);
         }
 
         // Save and return the DM response
@@ -295,8 +299,17 @@ PROMPT;
         $summaryPrompt .= "NEW TRANSCRIPT TO SUMMARIZE:\n{$transcript}";
 
         try {
+            $providerName = $campaign->ai_provider ?? config('ai.default');
+            $summaryModel = config("ai.providers.{$providerName}.summary_model")
+                ?? config("ai.providers.{$providerName}.model");
+
             $summary = $this->callAI($campaign, $summaryPrompt, [
                 ['role' => 'user', 'content' => 'Summarize this transcript. Output only the summary, no preamble.'],
+            ], [
+                'model' => $summaryModel,
+                'temperature' => 0.2,
+                'max_tokens' => 2048,
+                'cache_key' => null, // Don't cache the summarization prompt — it changes every time
             ]);
 
             $session->update([
@@ -856,10 +869,30 @@ PROMPT;
         return trim(preg_replace('/\s*\[MOOD:\w+\]\s*$/i', '', $text));
     }
 
-    private function callAI(Campaign $campaign, string $systemPrompt, array $messages): string
+    private function invalidateCampaignCache(Campaign $campaign): void
+    {
+        // Gemini uses explicit server-side caches that need manual invalidation.
+        // Anthropic caches are keyed by content hash — when the system prompt
+        // changes (due to game state updates) it's automatically a cache miss.
+        if ($campaign->ai_provider === 'gemini') {
+            $provider = $this->aiManager->provider('gemini');
+            if (method_exists($provider, 'invalidateCache')) {
+                $provider->invalidateCache("campaign_{$campaign->id}");
+            }
+        }
+    }
+
+    private function callAI(Campaign $campaign, string $systemPrompt, array $messages, array $options = []): string
     {
         $provider = $this->aiManager->provider($campaign->ai_provider);
 
-        return $provider->chat($systemPrompt, $messages);
+        // Enable context caching when a session-scoped cache key is provided.
+        // Both providers support this: Gemini via CachedContents API,
+        // Claude via inline cache_control breakpoints.
+        if (!isset($options['cache_key'])) {
+            $options['cache_key'] = "campaign_{$campaign->id}";
+        }
+
+        return $provider->chat($systemPrompt, $messages, $options);
     }
 }
